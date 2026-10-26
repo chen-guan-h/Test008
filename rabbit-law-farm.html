@@ -14,7 +14,18 @@
 [hidden]{display:none!important}
 html,body{margin:0;height:100%;overflow:hidden;background:#1d2a20;color:var(--ink);font-family:"Huninn","Noto Sans TC",system-ui,sans-serif;user-select:none;-webkit-user-select:none;touch-action:manipulation}
 button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
-#cv{position:fixed;inset:0;width:100%;height:100%;display:block}
+#cv,#ov{position:fixed;left:0;top:0;width:100%;height:100%;display:block}
+#ov{z-index:2;touch-action:none}
+#nogl{position:fixed;left:16px;right:16px;top:40%;z-index:3;background:#fff;border-radius:14px;padding:14px;text-align:center}
+#card{position:fixed;left:8px;right:8px;z-index:7;max-width:460px;margin:0 auto;background:rgba(255,253,248,.97);border-radius:16px;box-shadow:0 6px 24px rgba(0,0,0,.28);padding:10px 12px;font-size:13.5px;animation:fin .2s}
+#card .x{width:28px;height:28px;border-radius:14px;background:#ece5d4}
+#card .cname{font-size:17px;cursor:pointer}
+.qrow{display:flex;gap:8px;align-items:center;padding:5px 0;border-bottom:1px dashed var(--line);font-size:13px}
+.coin{position:fixed;left:50%;transform:translateX(-50%);z-index:20;font:900 26px "Huninn",sans-serif;color:#ffd23a;text-shadow:0 2px 0 #8a5a10,0 0 8px rgba(0,0,0,.4);pointer-events:none;animation:coin 1.4s ease-out forwards}
+@keyframes coin{from{opacity:1;margin-top:0}to{opacity:0;margin-top:-70px}}
+#cLv{flex-direction:column;align-items:stretch;gap:2px;padding:3px 9px}
+#cLv .lvb{height:4px;border-radius:2px;background:#e6dfcf;overflow:hidden;width:56px}#cLv .lvb i{display:block;height:100%;background:#e2a83a}
+.bunny b{font-size:14px}
 #top{position:fixed;left:0;right:0;top:0;z-index:5;padding:calc(6px + env(safe-area-inset-top)) 8px 4px;display:flex;flex-wrap:wrap;gap:5px;pointer-events:none}
 #top>*{pointer-events:auto}
 .chip{background:rgba(255,253,248,.94);border-radius:13px;padding:4px 9px;font-size:12.5px;box-shadow:0 2px 6px rgba(0,0,0,.15);display:flex;align-items:center;gap:5px;white-space:nowrap}
@@ -95,8 +106,9 @@ h3 small{font-weight:400;color:var(--mute);font-size:12px}
 </style>
 </head>
 <body>
-<canvas id="cv"></canvas>
+<canvas id="cv"></canvas><canvas id="ov"></canvas><div id="nogl" hidden>你的瀏覽器不支援 3D（WebGL），請改用最新版 Chrome 或 Safari。答題與農場功能仍可使用。</div><div id="card" hidden></div>
 <div id="top" hidden>
+  <div class="chip" id="cLv"><span>⭐ Lv <b id="lv">1</b></span><div class="lvb"><i id="lvBar"></i></div></div>
   <div class="chip" id="cMoney">💰 <b id="money">0</b></div>
   <div class="chip" id="cDate"><b id="clock">06:00</b><small id="date"></small></div>
   <div class="chip" id="cWx"></div>
@@ -112,7 +124,8 @@ h3 small{font-weight:400;color:var(--mute);font-size:12px}
   <div id="sheet"></div>
   <div id="tabs">
     <button data-t="work" class="on"><i>💼</i>工作</button>
-    <button data-t="farm"><i>🐰</i>農場</button>
+    <button data-t="farm"><i>🏡</i>農場<span class="dot" id="fDot" hidden></span></button>
+    <button data-t="bunny"><i>🐰</i>兔子</button>
     <button data-t="shop"><i>🛒</i>商店</button>
     <button data-t="note"><i>📖</i>筆記</button>
     <button data-t="wrong"><i>📕</i>錯題<span class="dot" id="wDot" hidden></span></button>
@@ -702,8 +715,9 @@ CH.push({
 
 </script>
 <script>
-/* 農場模擬：時間、季節天氣、兔子（年齡、性別、飽足、健康、懷孕、哺乳、疾病、繁殖）、飼料、衛生、
-   看門狗（體力、等級、薪餉）、野狼夜襲、老鷹、颱風、商店、買賣、成就、存檔 */
+/* 農場模擬 v2：時間季節天氣、兔子（個性、好感度、心情、毛色遺傳、圖鑑）、擺設與使用、互動、禮物、
+   看門狗（受傷、訓練、等級）、野狼與 S 級狼人夜襲（兔子不會被抓走，只會抓狗、破壞兔籠門）、
+   每日任務、農場等級、成就、舊存檔升級、匯出匯入 */
 (function () {
 'use strict';
 const U = window.U = {
@@ -712,74 +726,125 @@ const U = window.U = {
   hm: m => `${String(Math.floor(m / 60) % 24).padStart(2, '0')}:${String(Math.floor(m % 60)).padStart(2, '0')}`,
 };
 const G = window.G = {};
-const F = window.F = { ev: [] };
+const F = window.F = { ev: [], hold: false };
 const emit = o => F.ev.push(o);
 
 /* ---------- 常數 ---------- */
 F.SEASONS = ['春', '夏', '秋', '冬'];
-F.SEASON_DAYS = 7;
-F.YEAR_DAYS = 28;
-F.MIN_PER_SEC = 8;          /* 1 倍速：每秒 8 分鐘，一天約 3 分鐘 */
-F.ADULT = 8;                /* 幾天成年 */
-F.GESTATION = 4;            /* 懷孕天數 */
-F.NURSE = 3;                /* 哺乳天數 */
-F.OLD = 70;                 /* 開始衰老 */
-F.HUTCH_CAP = 10;
-F.DOG_COST = 50;            /* 每日狗糧與照護 */
-F.COLORS = ['#f7f3ec', '#c9a27a', '#8a8a8a', '#5a4636', '#efe4d0', '#2e2a28'];
-F.NAMES = ['小白', '麻糬', '湯圓', '奶茶', '可可', '布丁', '花生', '芝麻', '豆花', '雪球', '黑糖', '米香', '棉花', '栗子', 'Lucky', '咖啡'];
-F.DOGNAMES = ['阿福', '小黑', '旺財', '黃金', '豆豆', '阿虎', '來福', '饅頭'];
-F.FENCE = [{ n: '無圍籬', mul: 1 }, { n: '木柵欄', mul: 0.7, price: 2500 }, { n: '鐵絲網圍籬', mul: 0.45, price: 6000 }, { n: '電圍籬', mul: 0.25, price: 15000 }];
+F.SEASON_DAYS = 7; F.YEAR_DAYS = 28; F.MIN_PER_SEC = 8;
+F.ADULT = 8; F.GESTATION = 4; F.NURSE = 3; F.OLD = 70; F.HUTCH_CAP = 10; F.MAX_HUTCH = 8; F.DOG_COST = 50; F.SLOTS = 15;
+F.NAMES = ['麻糬', '湯圓', '奶茶', '可可', '布丁', '花生', '芝麻', '豆花', '雪球', '黑糖', '米香', '棉花', '栗子', '咖啡', '小白', '牛奶', '餅乾', '奶油', '蜜桃', '糖糖', '妞妞', '球球', '毛毛', '露露', '丸子', '紅豆', '芋圓', '仙草', '可頌', '鬆餅', '焦糖', '蕨餅', '團子', '肉桂', '抹茶', '拿鐵', '果凍', '米果', '小熊', '泡芙'];
+F.DOGNAMES = ['阿福', '小黑', '旺財', '黃金', '豆豆', '阿虎', '來福', '饅頭', '柴柴', '阿嬤'];
+F.PERS = {
+  glutton: { n: '貪吃鬼', ic: '🥕', d: '看到食物就衝過去，最愛零食、胡蘿蔔盆和乾草堆。', likes: ['carrot', 'hay', 'cake'], m: { snack: 2, pet: 1, brush: 0.8, play: 0.9, hug: 1 } },
+  active: { n: '活力王', ic: '⚡', d: '整天蹦蹦跳跳，開心就原地扭跳，最愛隧道、跳台、小球和鞦韆。', likes: ['tunnel', 'steps', 'ball', 'swing'], m: { snack: 1, pet: 0.8, brush: 0.7, play: 2.2, hug: 0.8 } },
+  shy: { n: '害羞鬼', ic: '🙈', d: '怕生、喜歡躲進小屋；跟主人熟了以後會變得超黏人。', likes: ['house', 'tunnel', 'pumpkin'], m: { snack: 1.2, pet: 0.8, brush: 1, play: 0.7, hug: -1 } },
+  clingy: { n: '黏人精', ic: '💗', d: '最喜歡主人了，被抱抱、摸摸會開心到融化。', likes: ['picnic', 'house', 'flower'], m: { snack: 1, pet: 1.6, brush: 1.2, play: 1, hug: 2.2 } },
+  lazy: { n: '懶洋洋', ic: '😴', d: '能躺就不坐，最愛野餐墊、乾草堆和曬太陽。', likes: ['picnic', 'hay', 'house'], m: { snack: 1.2, pet: 1.2, brush: 1.6, play: 0.5, hug: 1 } },
+  curious: { n: '好奇寶寶', ic: '🔍', d: '什麼都想聞聞看，新擺設一定第一個去探險，也最常撿到小禮物。', likes: ['windmill', 'pond', 'flower', 'lantern'], m: { snack: 1.2, pet: 1.1, brush: 1, play: 1.4, hug: 1.1 } },
+  neat: { n: '愛乾淨', ic: '🫧', d: '時常理毛，最愛被梳毛；兔舍髒了會很不開心。', likes: ['flower', 'pond', 'mushroom'], m: { snack: 1, pet: 1, brush: 2.4, play: 0.9, hug: 1 } },
+  tsun: { n: '傲嬌', ic: '😤', d: '嘴上說不要，其實很在意你；好感度高了會偷偷送你最好的禮物。', likes: ['steps', 'mushroom', 'windmill'], m: { snack: 0.6, pet: 0.6, brush: 0.6, play: 0.6, hug: 0.5 } },
+};
+F.ACTS = { pet: { n: '摸摸頭', ic: '🤚', aff: 4, mood: 8, cost: 0 }, snack: { n: '餵零食', ic: '🥕', aff: 6, mood: 10, cost: 20 }, brush: { n: '梳毛', ic: '🪮', aff: 5, mood: 8, cost: 0 }, play: { n: '陪玩', ic: '🎾', aff: 5, mood: 10, cost: 0 }, hug: { n: '抱抱', ic: '🤗', aff: 5, mood: 8, cost: 0 } };
+F.AFF_LV = ['陌生', '認識', '朋友', '好朋友', '摯友'];
+F.affLv = a => Math.min(4, Math.floor(a / 20));
+F.DECOR = [
+  { t: 'house', n: '兔兔小木屋', ic: '🏠', price: 600, lv: 1, ap: 6, use: 'hide', d: '可以躲進去休息，害羞的兔子最愛。' },
+  { t: 'hay', n: '乾草堆', ic: '🌾', price: 300, lv: 1, ap: 4, use: 'eat', d: '可以啃、可以躺，貪吃和懶散的兔子都喜歡。' },
+  { t: 'ball', n: '彩色小球', ic: '⚽', price: 200, lv: 1, ap: 3, use: 'ball', d: '用鼻子推著玩，活力王最愛。' },
+  { t: 'carrot', n: '胡蘿蔔花盆', ic: '🥕', price: 450, lv: 2, ap: 5, use: 'eat', d: '種著新鮮胡蘿蔔，貪吃鬼會一直守在旁邊。' },
+  { t: 'tunnel', n: '兔兔隧道', ic: '🌀', price: 500, lv: 2, ap: 6, use: 'tunnel', d: '鑽進鑽出超好玩。' },
+  { t: 'picnic', n: '野餐墊', ic: '🧺', price: 280, lv: 2, ap: 4, use: 'lie', d: '曬太陽、翻肚躺平的好地方。' },
+  { t: 'steps', n: '草皮跳台', ic: '🪜', price: 450, lv: 3, ap: 5, use: 'climb', d: '跳上去看風景，傲嬌兔喜歡站高高。' },
+  { t: 'flower', n: '鮮花花圃', ic: '🌷', price: 380, lv: 3, ap: 5, use: 'sniff', d: '聞聞花香，心情變好。' },
+  { t: 'mushroom', n: '蘑菇小凳', ic: '🍄', price: 400, lv: 4, ap: 5, use: 'climb', d: '可愛的紅蘑菇，可以跳上去坐。' },
+  { t: 'pond', n: '睡蓮小池塘', ic: '🪷', price: 900, lv: 5, ap: 8, use: 'drink', d: '喝水、照鏡子，好奇寶寶最愛。' },
+  { t: 'lantern', n: '暖光燈籠', ic: '🏮', price: 350, lv: 5, ap: 4, use: 'sniff', d: '晚上亮起暖暖的燈，兔子夜裡比較不怕。' },
+  { t: 'swing', n: '小鞦韆', ic: '🎠', price: 800, lv: 6, ap: 7, use: 'swing', d: '兔子也會盪鞦韆！' },
+  { t: 'windmill', n: '小風車', ic: '🌬️', price: 750, lv: 7, ap: 6, use: 'sniff', d: '會轉的風車，好奇寶寶看得目不轉睛。' },
+  { t: 'pumpkin', n: '南瓜屋', ic: '🎃', price: 850, lv: 8, ap: 7, use: 'hide', d: '秋天限定的南瓜小屋（任何季節都能放）。' },
+  { t: 'snowman', n: '小雪人', ic: '⛄', price: 500, lv: 8, ap: 5, use: 'sniff', d: '冬天的好朋友。' },
+  { t: 'cake', n: '胡蘿蔔蛋糕台', ic: '🎂', price: 1200, lv: 10, ap: 9, use: 'eat', d: '豪華甜點台，所有兔子都瘋狂。' },
+];
+F.DEC = Object.fromEntries(F.DECOR.map(d => [d.t, d]));
+F.FENCE = [{ n: '無圍籬', mul: 1 }, { n: '木柵欄', mul: 0.75, price: 2500 }, { n: '鐵絲網圍籬', mul: 0.5, price: 6000 }, { n: '電圍籬', mul: 0.3, price: 15000 }];
 F.SHOP = [
-  { id: 'hay5', n: '牧草 5 公斤', ic: '🌾', price: 120, d: '兔子主食，維持腸胃健康。缺牧草容易生病。', f: () => (G.hay += 5) },
-  { id: 'hay20', n: '牧草 20 公斤', ic: '🌾', price: 440, d: '大包裝比較划算。', f: () => (G.hay += 20) },
-  { id: 'pel5', n: '兔飼料 5 公斤', ic: '🥕', price: 200, d: '營養補給，幼兔成長與母兔懷孕哺乳需要。', f: () => (G.pel += 5) },
-  { id: 'pel20', n: '兔飼料 20 公斤', ic: '🥕', price: 720, d: '大包裝比較划算。', f: () => (G.pel += 20) },
-  { id: 'med', n: '兔用藥品 1 份', ic: '💊', price: 150, d: '有兔子生病時自動使用。', f: () => (G.med += 1) },
-  { id: 'med10', n: '兔用藥品 10 份', ic: '💊', price: 1300, d: '疫情爆發時的救命包。', f: () => (G.med += 10) },
-  { id: 'doe', n: '母兔 1 隻（成年）', ic: '🐰', price: 400, d: '可以繁殖。', f: () => F.addRabbit('f', 10) },
-  { id: 'buck', n: '公兔 1 隻（成年）', ic: '🐇', price: 400, d: '需要有公兔才能繁殖。', f: () => F.addRabbit('m', 10) },
-  { id: 'hutch', n: '兔籠 1 座', ic: '🏠', price: 1800, d: '每座可住 10 隻。太擁擠會停止繁殖、容易生病打架。', f: () => (G.hutch += 1) },
-  { id: 'dog', n: '看門狗 1 隻', ic: '🐶', price: 1500, d: '夜裡和野狼搏鬥，保護兔子。每天狗糧與照護 $50。最多 6 隻。', can: () => G.dogs.length < 6, f: () => F.addDog() },
-  { id: 'vet', n: '獸醫治療所有狗', ic: '🩺', price: 300, d: '受傷的狗恢復滿體力。', can: () => G.dogs.some(d => d.hp < 100), f: () => G.dogs.forEach(d => (d.hp = 100)) },
-  { id: 'fence', n: '升級圍籬', ic: '🚧', price: 0, d: '降低野狼入侵機率。', dyn: 1, can: () => G.fence < 3, f: () => (G.fence += 1) },
-  { id: 'net', n: '防鳥網', ic: '🕸️', price: 2000, d: '防止老鷹白天抓走幼兔。', can: () => !G.net, f: () => (G.net = 1) },
+  { id: 'hay5', cat: 'supply', n: '牧草 5 公斤', ic: '🌾', price: 120, d: '兔子主食，維持腸胃健康。', f: () => (G.hay += 5) },
+  { id: 'hay20', cat: 'supply', n: '牧草 20 公斤', ic: '🌾', price: 440, d: '大包裝比較划算。', f: () => (G.hay += 20) },
+  { id: 'pel5', cat: 'supply', n: '兔飼料 5 公斤', ic: '🥕', price: 200, d: '幼兔成長、母兔懷孕哺乳需要。', f: () => (G.pel += 5) },
+  { id: 'pel20', cat: 'supply', n: '兔飼料 20 公斤', ic: '🥕', price: 720, d: '大包裝比較划算。', f: () => (G.pel += 20) },
+  { id: 'med', cat: 'supply', n: '兔用藥品 3 份', ic: '💊', price: 400, d: '有兔子生病時自動使用。', f: () => (G.med += 3) },
+  { id: 'doe', cat: 'animal', n: '母兔（隨機花色個性）', ic: '🐰', price: 400, d: '成年母兔，可以繁殖。', f: () => F.addRabbit('f', 10) },
+  { id: 'buck', cat: 'animal', n: '公兔（隨機花色個性）', ic: '🐇', price: 400, d: '需要有公兔才能繁殖。', f: () => F.addRabbit('m', 10) },
+  { id: 'rare', cat: 'animal', n: '稀有品種兔', ic: '✨', price: 1600, lv: 4, d: '垂耳兔、侏儒兔或獅子兔，花色稀有。', f: () => F.addRabbit(Math.random() < 0.5 ? 'f' : 'm', 10, null, true) },
+  { id: 'dog', cat: 'animal', n: '看門狗（柴犬）', ic: '🐶', price: 1500, d: '在戶外庭院巡邏，夜裡和野狼搏鬥。每天狗糧 $50。最多 6 隻。', can: () => G.dogs.length < 6, f: () => F.addDog() },
+  { id: 'hutch', cat: 'facility', n: '兔籠 1 座', ic: '🏠', price: 1800, d: '每座可住 10 隻（門壞掉只能住 5 隻）。最多 8 座。', can: () => G.hutch < F.MAX_HUTCH, f: () => { G.hutch++; G.doors.push(1); } },
+  { id: 'repair', cat: 'facility', n: '修理兔籠門', ic: '🔨', price: 250, d: '被狼抓壞的門，修好兔子才安心。', can: () => G.doors.some(d => !d), f: () => F.repairDoor() },
+  { id: 'fence', cat: 'facility', n: '升級圍籬', ic: '🚧', price: 0, dyn: 1, d: '降低野狼來襲的機率。', can: () => G.fence < 3, f: () => (G.fence += 1) },
+  { id: 'net', cat: 'facility', n: '防鳥網', ic: '🕸️', price: 1500, d: '老鷹不會再來嚇小兔子。', can: () => !G.net, f: () => (G.net = 1) },
+  { id: 'vet', cat: 'facility', n: '獸醫治療所有狗', ic: '🩺', price: 300, d: '受傷的狗恢復滿體力。', can: () => G.dogs.some(d => d.hp < 100), f: () => G.dogs.forEach(d => (d.hp = 100)) },
 ];
 F.price = it => (it.dyn ? (F.FENCE[G.fence + 1] || {}).price || 0 : it.price);
 
+/* ---------- 毛色與品種 ---------- */
+const COMMON = ['white', 'cream', 'fawn', 'brown', 'chestnut', 'gray', 'black', 'orange'], RARE = ['gold', 'blue', 'lilac', 'choco'];
+F.randCoat = function (rare) {
+  const c1 = Math.random() < (rare ? 0.6 : 0.08) ? U.pick(RARE) : U.pick(COMMON);
+  const pat = U.pick(rare ? ['solid', 'dutch', 'spot', 'himalayan', 'agouti'] : ['solid', 'solid', 'solid', 'dutch', 'agouti', 'spot']);
+  const br = rare ? U.pick(['lop', 'dwarf', 'lion']) : Math.random() < 0.05 ? U.pick(['lop', 'dwarf']) : 'std';
+  return { c1: pat === 'himalayan' ? 'white' : c1, c2: 'white', pat, br };
+};
+F.inherit = function (mom, dad) {
+  if (Math.random() < 0.1) return F.randCoat(Math.random() < 0.25);
+  const a = Math.random() < 0.5 ? mom.coat : (dad || mom).coat, b = Math.random() < 0.5 ? mom.coat : (dad || mom).coat;
+  return { c1: a.c1, c2: 'white', pat: b.pat, br: Math.random() < 0.5 ? a.br : b.br };
+};
+F.coatKey = c => `${c.br}-${c.pat}-${c.c1}`;
+F.rarity = c => (RARE.includes(c.c1) ? 2 : 0) + (c.br !== 'std' ? 2 : 0) + (c.pat === 'himalayan' || c.pat === 'spot' ? 1 : 0);
+F.coatName = function (c) { const CN = { white: '白', cream: '奶油', fawn: '淺棕', brown: '棕', chestnut: '栗', gray: '灰', black: '黑', orange: '橘', gold: '金', blue: '藍灰', lilac: '丁香紫', choco: '巧克力' }; const PN = { solid: '', dutch: '荷蘭斑', spot: '花斑', himalayan: '喜馬拉雅', agouti: '野兔色' }; const BN = { std: '', lop: '垂耳', dwarf: '侏儒', lion: '獅子' }; return `${CN[c.c1] || ''}${PN[c.pat] ? '・' + PN[c.pat] : ''}${BN[c.br] ? '・' + BN[c.br] + '兔' : ''}`; };
+
 /* ---------- 新遊戲 ---------- */
+F.blank = () => ({
+  v: 2, name: '縱谷兔子農場', money: 1500, day: 0, min: 6 * 60, speed: 1,
+  hay: 6, pel: 3, med: 0, hutch: 1, doors: [1], fence: 0, net: 0, clean: 85,
+  rabbits: [], dogs: [], decor: [], gifts: [], nid: 1, log: [], weather: '晴', wolfHour: -1, wolfS: 0, eagle: -1, hayShort: 0, pelShort: 0,
+  level: 1, xp: 0, quests: null, album: {},
+  stats: { born: 0, sold: 0, soldMoney: 0, attacks: 0, repel: 0, dogLost: 0, dogHurt: 0, doorsBroken: 0, sAttack: 0, sWin: 0, maxRabbits: 2, spent: 0, pets: 0, gifts: 0, giftMoney: 0 },
+  quiz: { s: {}, right: 0, wrong: 0, streak: 0, best: 0, earned: 0, unlocked: ['c1'], exams: [], recent: [] },
+  ach: {}, seenIntro: 0, seenV2: 1, quality: 2,
+});
 F.newGame = function (name) {
   for (const k of Object.keys(G)) delete G[k];
-  Object.assign(G, {
-    v: 1, name: name || '兔子農場', money: 1500, day: 0, min: 6 * 60, speed: 1,
-    hay: 6, pel: 3, med: 0, hutch: 1, fence: 0, net: 0, clean: 80,
-    rabbits: [], dogs: [], nid: 1, log: [], weather: '晴', wolfHour: -1, eagleHour: -1, hayShort: 0, pelShort: 0,
-    stats: { born: 1, sold: 0, soldMoney: 0, lostWolf: 0, lostEagle: 0, lostSick: 0, lostHunger: 0, lostOld: 0, dogLost: 0, repel: 0, attacks: 0, maxRabbits: 2, spent: 0 },
-    quiz: { s: {}, right: 0, wrong: 0, streak: 0, best: 0, earned: 0, unlocked: ['c1'], exams: [], recent: [] },
-    ach: {}, seenIntro: 0,
-  });
-  F.addRabbit('m', 12); F.addRabbit('f', 12);
-  F.planDay();
-  F.log(`${G.name}開張了！目前有一對兔子，先去「💼 工作」答題賺錢吧。`, 'big');
+  Object.assign(G, F.blank(), { name: name || '縱谷兔子農場' });
+  F.addRabbit('m', 12, null, false, 'curious'); F.addRabbit('f', 12, null, false, 'clingy');
+  F.planDay(); F.newQuests();
+  F.log(`${G.name}開張了！先去「💼 工作」答題賺錢，再幫兔子買擺設吧。`, 'big');
 };
-F.addRabbit = function (s, age, mom) {
-  const r = { id: G.nid++, s, age: age || 0, hp: 100, full: 80, preg: 0, nurse: 0, sick: 0, col: mom ? (Math.random() < 0.7 ? mom.col : U.ri(0, F.COLORS.length - 1)) : U.ri(0, F.COLORS.length - 1), nm: U.pick(F.NAMES) };
-  G.rabbits.push(r); return r;
+F.uniqName = function () { const used = new Set(G.rabbits.map(r => r.nm)); const free = F.NAMES.filter(n => !used.has(n)); return free.length ? U.pick(free) : U.pick(F.NAMES) + (G.nid % 100); };
+F.addRabbit = function (s, age, mom, rare, pers) {
+  const dad = mom ? U.pick(F.adults('m')) : null;
+  const coat = mom ? F.inherit(mom, dad) : F.randCoat(rare);
+  const r = { id: G.nid++, s, age: age || 0, hp: 100, full: 80, preg: 0, nurse: 0, sick: 0, mood: 65, aff: mom ? 15 : 5, pers: pers || U.pick(Object.keys(F.PERS)), coat, nm: F.uniqName(), care: {}, born: G.day };
+  G.rabbits.push(r);
+  const key = F.coatKey(coat);
+  if (!G.album[key]) { G.album[key] = G.day + 1; if (Object.keys(G.album).length > 2) F.log(`📔 圖鑑新增：${F.coatName(coat)}！`, 'good'); }
+  emit({ k: 'rabbitAdd', id: r.id });
+  return r;
 };
-F.addDog = function () { const d = { id: G.nid++, nm: U.pick(F.DOGNAMES), hp: 100, atk: U.ri(11, 14), lv: 1, xp: 0, hungry: 0, wins: 0 }; G.dogs.push(d); F.log(`新的看門狗「${d.nm}」加入農場！`, 'good'); return d; };
-F.log = function (m, kind) { G.log.push({ d: G.day, t: G.min, m, kind }); if (G.log.length > 120) G.log.shift(); emit({ k: 'log', m, kind }); };
+F.addDog = function () { const d = { id: G.nid++, nm: U.pick(F.DOGNAMES.filter(n => !G.dogs.some(x => x.nm === n))) || '小狗', ci: G.dogs.length % 6, hp: 100, atk: U.ri(11, 14), lv: 1, xp: 0, hungry: 0, wins: 0, aff: 10, care: {} }; G.dogs.push(d); F.log(`看門狗「${d.nm}」加入農場，在庭院巡邏中！`, 'good'); emit({ k: 'dogAdd', id: d.id }); return d; };
+F.log = function (m, kind) { G.log.push({ d: G.day, t: G.min, m, kind }); if (G.log.length > 150) G.log.shift(); emit({ k: 'log', m, kind }); };
 
 /* ---------- 曆法 ---------- */
 F.season = (d = G.day) => Math.floor((d % F.YEAR_DAYS) / F.SEASON_DAYS);
 F.dateStr = () => `第 ${Math.floor(G.day / F.YEAR_DAYS) + 1} 年 ${F.SEASONS[F.season()]}季 第 ${G.day % F.SEASON_DAYS + 1} 天`;
 F.isNight = (m = G.min) => m >= 19 * 60 || m < 5 * 60;
-F.cap = () => G.hutch * F.HUTCH_CAP;
-F.kits = () => G.rabbits.filter(r => r.age < F.ADULT);
+F.fullMoon = (d = G.day) => d % 14 === 13;
+F.cap = () => G.doors.reduce((s, d) => s + (d ? F.HUTCH_CAP : 5), 0);
 F.adults = s => G.rabbits.filter(r => r.age >= F.ADULT && (!s || r.s === s));
 
 /* ---------- 時間推進 ---------- */
 F.tick = function (mins) {
-  for (let i = 0; i < mins; i++) {
+  for (let i = 0; i < mins && !F.hold; i++) {
     const h0 = Math.floor(G.min / 60);
     G.min++;
     if (G.min >= 1440) { G.min = 0; F.newDay(); }
@@ -788,195 +853,242 @@ F.tick = function (mins) {
   }
 };
 F.dailyNeed = function () {
-  const win = F.season() === 3 ? 1.25 : 1, cold = G.weather === '寒流' ? 1.15 : 1;
+  const k0 = F.season() === 3 ? 1.25 : 1, k1 = G.weather === '寒流' ? 1.15 : 1;
   let hay = 0, pel = 0;
-  for (const r of G.rabbits) {
-    if (r.age < 3) continue;
-    const k = r.age < F.ADULT ? 0.5 : 1;
-    hay += 0.25 * k; pel += 0.12 * k * (r.nurse || r.preg ? 1.6 : 1);
-  }
-  return { hay: hay * win * cold, pel: pel * win * cold };
+  for (const r of G.rabbits) { if (r.age < 3) continue; const k = r.age < F.ADULT ? 0.5 : 1; hay += 0.25 * k * (r.pers === 'glutton' ? 1.15 : 1); pel += 0.12 * k * (r.nurse || r.preg ? 1.6 : 1); }
+  return { hay: hay * k0 * k1, pel: pel * k0 * k1 };
 };
 F.hour = function (h) {
-  /* 餵食（自動從庫存取用） */
-  const need = F.dailyNeed();
-  const hn = need.hay / 24, pn = need.pel / 24;
+  const need = F.dailyNeed(), hn = need.hay / 24, pn = need.pel / 24;
   const hayOk = G.hay >= hn, pelOk = G.pel >= pn;
   G.hay = Math.max(0, G.hay - hn); G.pel = Math.max(0, G.pel - pn);
-  if (!hayOk && !G.hayShort) { G.hayShort = 1; F.log('牧草吃完了！兔子會餓、腸胃容易出問題，快去商店買。', 'bad'); emit({ k: 'alert', m: '🌾 牧草用完了' }); }
-  if (!pelOk && !G.pelShort) { G.pelShort = 1; F.log('兔飼料吃完了，幼兔長不好、母兔不會懷孕。', 'bad'); }
+  if (!hayOk && !G.hayShort) { G.hayShort = 1; F.log('牧草吃完了！兔子會餓、心情變差，快去商店買。', 'bad'); emit({ k: 'alert', m: '🌾 牧草用完了' }); }
+  if (!pelOk && !G.pelShort) { G.pelShort = 1; F.log('兔飼料吃完了，母兔不會懷孕、小兔長不好。', 'bad'); }
   if (hayOk) G.hayShort = 0; if (pelOk) G.pelShort = 0;
   for (const r of G.rabbits) {
-    if (r.age < 3) { r.full = 90; continue; }       /* 喝母奶 */
+    if (r.age < 3) { r.full = 90; continue; }
     r.full = U.clamp(r.full + (hayOk && pelOk ? 6 : hayOk || pelOk ? -1.5 : -5), 0, 100);
-    if (r.full < 25) r.hp -= 1.6;
-    if (r.sick) r.hp -= 1.1;
-    else if (r.full > 50) r.hp = Math.min(100, r.hp + 0.4);
+    if (r.full < 25) { r.hp = Math.max(15, r.hp - 1.2); r.mood = Math.max(0, r.mood - 0.8); }
+    else if (!r.sick) r.hp = Math.min(100, r.hp + 0.5);
   }
-  F.reap();
-  /* 夜襲與白天猛禽 */
-  if (h === G.wolfHour) F.wolfRaid();
-  if (h === G.eagleHour) F.eagle();
+  if (h === G.wolfHour) F.raid();
+  if (h === G.eagle) F.eagleScare();
 };
 F.planDay = function () {
-  const s = F.season(), d = G.day;
-  /* 天氣 */
-  const r = Math.random();
+  const s = F.season(), d = G.day, r = Math.random();
   G.weather = s === 0 ? (r < 0.6 ? '晴' : r < 0.9 ? '雨' : '陰') : s === 1 ? (r < 0.6 ? '晴' : r < 0.85 ? '雨' : r < 0.95 ? '陰' : '颱風') : s === 2 ? (r < 0.65 ? '晴' : r < 0.85 ? '陰' : '雨') : (r < 0.45 ? '晴' : r < 0.7 ? '陰' : r < 0.9 ? '寒流' : '雨');
-  if (G.weather === '颱風') { G.clean = Math.max(0, G.clean - 30); F.log('颱風來襲！兔舍被吹得亂七八糟，衛生大幅下降。', 'bad'); emit({ k: 'alert', m: '🌀 颱風來襲' }); for (const q of G.rabbits) if (Math.random() < 0.12) q.sick = q.sick || 1; }
-  if (G.weather === '寒流') F.log('寒流來了，兔子需要更多食物保暖。', '');
-  /* 今晚野狼：是否出現與時刻 */
+  if (G.weather === '颱風') { G.clean = Math.max(0, G.clean - 30); F.log('颱風來襲！兔舍被吹得亂七八糟。', 'bad'); emit({ k: 'alert', m: '🌀 颱風來襲' }); }
   const n = G.rabbits.length;
-  let p = d < 4 ? 0 : 0.16 + Math.min(0.2, d * 0.004) + Math.min(0.25, n / 160);
-  p *= [0.9, 1, 1.15, 1.4][s] * F.FENCE[G.fence].mul * (G.weather === '雨' || G.weather === '颱風' ? 0.75 : 1);
-  G.wolfHour = Math.random() < p ? U.pick([20, 21, 22, 23, 0, 1, 2, 3, 4]) : -1;
-  G.eagleHour = !G.net && Math.random() < 0.09 && G.weather !== '雨' ? U.ri(8, 16) : -1;
+  let p = d < 4 ? 0 : 0.18 + Math.min(0.18, d * 0.004) + Math.min(0.2, n / 160);
+  p *= [0.9, 1, 1.15, 1.35][s] * F.FENCE[G.fence].mul * (G.weather === '雨' || G.weather === '颱風' ? 0.75 : 1);
+  const sChance = d >= 14 ? (F.fullMoon() ? 0.4 : 0.05) : 0;
+  G.wolfS = Math.random() < sChance ? 1 : 0;
+  if (G.wolfS) p = Math.max(p, F.fullMoon() ? 0.85 : 0.5);
+  G.wolfHour = Math.random() < p ? U.pick([20, 21, 22, 23, 0, 1, 2, 3]) : -1;
+  G.eagle = !G.net && Math.random() < 0.1 ? U.ri(9, 16) : -1;
 };
 F.newDay = function () {
   G.day++;
   const s = F.season();
   if (G.day % F.SEASON_DAYS === 0) F.log(`${F.SEASONS[s]}天到了。${['春天是繁殖旺季！', '夏天注意颱風。', '秋天野狼為了過冬開始活躍。', '冬天食量大增，野狼最兇。'][s]}`, 'big');
+  if (F.fullMoon()) F.log('🌕 今晚是滿月……聽說森林深處的狼人會出沒。', 'bad');
   /* 年齡、懷孕、哺乳 */
   const births = [];
-  for (const r of G.rabbits) {
-    r.age += 1;
-    if (r.nurse) r.nurse--;
-    if (r.preg) { r.preg--; if (!r.preg) births.push(r); }
-    if (r.age === F.ADULT) { /* 成年 */ }
-  }
+  for (const r of G.rabbits) { r.age++; if (r.nurse) r.nurse--; if (r.preg) { r.preg--; if (!r.preg) births.push(r); } r.care = {}; }
   for (const m of births) {
-    let litter = U.ri(3, 7);
-    if (m.hp < 50 || m.full < 40) litter = Math.max(1, litter - 3);
-    if (G.clean < 30) litter = Math.max(1, litter - 2);
+    let litter = U.ri(2, 6); if (m.mood < 40 || m.full < 40) litter = Math.max(1, litter - 2);
+    litter = Math.min(litter, Math.max(1, F.cap() + 4 - G.rabbits.length));
     for (let i = 0; i < litter; i++) F.addRabbit(Math.random() < 0.5 ? 'm' : 'f', 0, m);
-    m.nurse = F.NURSE; G.stats.born += litter;
-    F.log(`母兔「${m.nm}」生了 ${litter} 隻小兔子！`, 'good'); emit({ k: 'birth', n: litter });
+    m.nurse = F.NURSE; G.stats.born += litter; F.addXP(3 * litter);
+    F.log(`母兔「${m.nm}」生了 ${litter} 隻小兔子！`, 'good'); emit({ k: 'birth', n: litter, id: m.id });
   }
   /* 繁殖 */
   const n = G.rabbits.length, cap = F.cap();
-  const males = F.adults('m').filter(r => r.hp > 40 && !r.sick).length;
-  if (males && n < cap * 1.05) {
-    const sm = [1.35, 1, 0.9, 0.45][s] * (G.pelShort ? 0.25 : 1) * (G.clean < 30 ? 0.5 : 1);
-    for (const r of F.adults('f')) if (!r.preg && !r.nurse && !r.sick && r.hp > 60 && r.full > 45 && r.age < F.OLD && Math.random() < 0.3 * sm) r.preg = F.GESTATION;
-  } else if (n >= cap * 1.05 && G.day % 2 === 0) F.log('兔籠太擠了，兔子不繁殖、容易打架生病。去商店買兔籠吧。', 'bad');
+  const males = F.adults('m').filter(r => !r.sick).length;
+  if (males && n < cap) {
+    const sm = [1.3, 1, 0.9, 0.5][s] * (G.pelShort ? 0.25 : 1);
+    for (const r of F.adults('f')) if (!r.preg && !r.nurse && !r.sick && r.mood > 40 && r.full > 45 && r.age < F.OLD && Math.random() < 0.26 * sm * (r.mood / 70)) r.preg = F.GESTATION;
+  } else if (n >= cap && G.day % 3 === 0) F.log('兔籠住滿了，兔子不會再繁殖。可以加蓋兔籠、修好門，或賣出一些兔子。', '');
   /* 衛生 */
   G.clean = U.clamp(G.clean - (0.8 + n / 10 * 1.1) * (G.weather === '雨' ? 1.4 : 1), 0, 100);
-  if (G.clean < 25 && G.day % 2 === 0) F.log('兔舍很髒了，記得打掃，不然容易爆發疾病。', 'bad');
-  /* 疾病 */
-  const sickN = G.rabbits.filter(r => r.sick).length, over = n > cap;
+  if (G.clean < 25 && G.day % 2 === 0) F.log('兔舍很髒了，愛乾淨的兔子很不開心，也容易生病。', 'bad');
+  /* 擺設的魅力 */
+  const types = new Set(G.decor.map(d => d.t));
+  const appeal = Math.min(28, G.decor.reduce((a, d) => a + F.DEC[d.t].ap, 0) * 0.7);
+  const broken = G.doors.filter(d => !d).length;
+  /* 每日心情、疾病、禮物 */
+  const sickN = G.rabbits.filter(r => r.sick).length;
   for (const r of G.rabbits) {
-    if (r.sick) {
-      r.sick++;
-      if (G.med > 0) { G.med--; r.sick = 0; r.hp = Math.min(100, r.hp + 20); F.log(`用藥治好了生病的「${r.nm}」。`, 'good'); }
-      else if (r.sick >= 4 && Math.random() < 0.35) { r.hp = 0; r.cause = 'sick'; }
-      continue;
-    }
-    let p = 0.005 + (G.clean < 40 ? 0.025 : 0) + (G.clean < 20 ? 0.04 : 0) + (over ? 0.03 : 0) + (G.hayShort ? 0.04 : 0) + Math.min(0.08, 0.12 * sickN / Math.max(1, n)) + (G.weather === '寒流' ? 0.01 : 0) + (r.age > F.OLD ? 0.02 : 0);
-    if (Math.random() < p) { r.sick = 1; F.log(`「${r.nm}」生病了（${U.pick(['腸胃停滯', '球蟲症', '巴氏桿菌感染', '皮膚黴菌'])}），需要藥品。`, 'bad'); }
+    const P = F.PERS[r.pers];
+    const fav = P.likes.some(t => types.has(t)) ? 8 : 0;
+    let target = 42 + appeal + fav + (G.clean - 50) * (r.pers === 'neat' ? 0.35 : 0.15) + (r.full > 50 ? 8 : -20) - (r.sick ? 18 : 0) - (n > cap ? 15 : 0) - broken * 6 + (F.affLv(r.aff) * 2);
+    r.mood = U.clamp(r.mood * 0.65 + target * 0.35, 0, 100);
+    if (r.sick) { r.sick++; if (G.med > 0) { G.med--; r.sick = 0; F.log(`用藥治好了「${r.nm}」。`, 'good'); } }
+    else if (Math.random() < 0.004 + (G.clean < 40 ? 0.02 : 0) + (G.clean < 20 ? 0.03 : 0) + (n > cap ? 0.025 : 0) + (G.hayShort ? 0.03 : 0) + Math.min(0.06, 0.1 * sickN / Math.max(1, n))) { r.sick = 1; F.log(`「${r.nm}」生病了（${U.pick(['腸胃停滯', '感冒打噴嚏', '皮膚黴菌', '牙齒太長'])}），需要藥品。`, 'bad'); }
+    r.aff = Math.max(0, r.aff - 0.4);  /* 久沒互動會慢慢生疏 */
+    /* 禮物 */
+    const gp = (r.aff >= 40 && r.mood >= 60 ? 0.12 : 0) + (r.pers === 'curious' ? 0.06 : 0) + (r.pers === 'tsun' && r.aff >= 60 ? 0.12 : 0);
+    if (gp && Math.random() < gp && G.gifts.length < 12) { const v = Math.round((20 + r.aff * 1.1) * (r.pers === 'tsun' ? 1.6 : 1)); G.gifts.push({ id: G.nid++, rid: r.id, v, kind: U.pick(['🍀', '🥕', '🌸', '💎']) }); emit({ k: 'gift', rid: r.id }); }
   }
-  if (over) for (const r of G.rabbits) if (Math.random() < 0.03) r.hp -= 15;   /* 打架受傷 */
-  /* 衰老 */
-  for (const r of G.rabbits) if (r.age > F.OLD && Math.random() < (r.age - F.OLD) * 0.02) { r.hp = 0; r.cause = 'old'; }
-  F.reap();
-  /* 狗：狗糧、恢復 */
+  /* 狗 */
   for (const d of G.dogs) {
-    if (G.money >= F.DOG_COST) { G.money -= F.DOG_COST; G.stats.spent += F.DOG_COST; d.hungry = 0; d.hp = Math.min(100, d.hp + 15); }
-    else { d.hungry++; d.hp -= 15; if (d.hungry === 1) F.log(`沒錢買狗糧，「${d.nm}」餓肚子了。`, 'bad'); }
+    if (G.money >= F.DOG_COST) { G.money -= F.DOG_COST; G.stats.spent += F.DOG_COST; d.hungry = 0; d.hp = Math.min(100, d.hp + 20); }
+    else { d.hungry++; d.hp = Math.max(5, d.hp - 10); if (d.hungry === 1) F.log(`沒錢買狗糧，「${d.nm}」餓肚子了。`, 'bad'); }
+    d.care = {};
   }
-  const gone = G.dogs.filter(d => d.hungry >= 3 || d.hp <= 0);
-  for (const d of gone) { F.log(`「${d.nm}」因為長期挨餓，離開了農場……`, 'bad'); G.stats.dogLost++; }
+  const gone = G.dogs.filter(d => d.hungry >= 4);
+  for (const d of gone) { F.log(`「${d.nm}」長期挨餓，跑去別人家了……`, 'bad'); G.stats.dogLost++; emit({ k: 'dogGone', id: d.id }); }
   G.dogs = G.dogs.filter(d => !gone.includes(d));
   G.stats.maxRabbits = Math.max(G.stats.maxRabbits, G.rabbits.length);
-  F.planDay();
+  F.planDay(); F.newQuests();
   emit({ k: 'day' });
   F.checkAch();
 };
-F.reap = function () {
-  const dead = G.rabbits.filter(r => r.hp <= 0);
-  if (!dead.length) return;
-  G.rabbits = G.rabbits.filter(r => r.hp > 0);
-  const by = { sick: 0, old: 0, hunger: 0 };
-  for (const r of dead) { const c = r.cause || (r.sick ? 'sick' : 'hunger'); by[c]++; }
-  if (by.sick) { G.stats.lostSick += by.sick; F.log(`${by.sick} 隻兔子病死了……`, 'bad'); }
-  if (by.old) { G.stats.lostOld += by.old; F.log(`${by.old} 隻老兔子壽終正寢。`, ''); }
-  if (by.hunger) { G.stats.lostHunger += by.hunger; F.log(`${by.hunger} 隻兔子因為長期挨餓而死了……`, 'bad'); }
-  emit({ k: 'death' });
-};
 
-/* ---------- 野狼夜襲 ---------- */
-F.wolfRaid = function () {
-  if (!G.rabbits.length) return;
-  const d = G.day, n = d < 12 ? 1 : U.clamp(1 + Math.floor(Math.random() * (1 + Math.min(4, d / 18 + G.rabbits.length / 45))), 1, 6) + (F.season() === 3 && Math.random() < 0.4 ? 1 : 0);
-  const wolves = Array.from({ length: n }, () => ({ hp: U.ri(60, 85), atk: U.ri(10, 15), out: 0 }));
-  G.stats.attacks++;
-  const dogs = G.dogs.filter(g => g.hp > 15);
-  const fightLog = { wolves: n, dogs: dogs.length, killedDogs: [], stolen: 0, fled: 0, wolfDead: 0 };
-  /* 搏鬥回合 */
-  for (let round = 0; round < 6; round++) {
-    const aw = wolves.filter(w => !w.out), ad = dogs.filter(g => g.hp > 0);
-    if (!aw.length || !ad.length) break;
-    for (const g of ad) { const w = U.pick(aw.filter(w => !w.out)) ; if (!w) break; w.hp -= g.atk * U.rand(0.6, 1.25) * (1 + (g.lv - 1) * 0.08); if (w.hp <= 0) { w.out = 'dead'; fightLog.wolfDead++; } else if (w.hp < 30) { w.out = 'fled'; fightLog.fled++; } }
-    for (const w of wolves.filter(w => !w.out)) { const g = U.pick(ad.filter(g => g.hp > 0)); if (!g) break; g.hp -= w.atk * U.rand(0.6, 1.3); }
+/* ---------- 夜襲：野狼與 S 級狼人 ---------- */
+F.dogPower = d => d.atk * (0.45 + d.hp / 180) * (1 + (d.lv - 1) * 0.1);
+F.raid = function () {
+  const d = G.day, S = !!G.wolfS;
+  const n = S ? 1 : d < 12 ? 1 : U.clamp(1 + Math.floor(Math.random() * (1 + Math.min(3, d / 20 + G.rabbits.length / 40))), 1, 5);
+  G.stats.attacks++; if (S) G.stats.sAttack++;
+  const dogs = G.dogs.slice();
+  const res = { n, S, dogs: [], taken: null, takenName: '', repelled: false, doors: [], bounty: 0 };
+  let dp = 0; for (const g of dogs) dp += F.dogPower(g) * U.rand(0.75, 1.3);
+  const wp = S ? U.rand(55, 85) : n * 12 * U.rand(0.8, 1.2) * (F.season() === 3 ? 1.15 : 1);
+  res.repelled = dogs.length > 0 && dp >= wp;
+  /* 狗的傷勢：一般狼只會受傷，不會死 */
+  for (const g of dogs) {
+    const dmg = Math.round(S ? U.rand(30, 60) : (wp / Math.max(1, dogs.length)) * U.rand(0.8, 1.6) + U.rand(2, 8));
+    g.hp = Math.max(5, g.hp - dmg); res.dogs.push({ id: g.id, dmg, hp: g.hp }); G.stats.dogHurt++;
   }
-  for (const g of dogs) if (g.hp <= 0) fightLog.killedDogs.push(g.nm);
-  if (fightLog.killedDogs.length) { G.dogs = G.dogs.filter(g => g.hp > 0); G.stats.dogLost += fightLog.killedDogs.length; }
-  /* 沒被擋下的狼叼走兔子 */
-  const free = wolves.filter(w => !w.out).length;
-  const engagedFree = Math.max(0, free - Math.max(0, dogs.length - fightLog.killedDogs.length) * 0.5);
-  let steal = 0;
-  for (let i = 0; i < Math.ceil(engagedFree); i++) steal += G.fence >= 3 ? (Math.random() < 0.5 ? 1 : 0) : G.rabbits.length <= 4 || d < 12 ? 1 : U.ri(1, 2);
-  steal = Math.min(steal, G.rabbits.length);
-  for (let i = 0; i < steal; i++) {
-    const pool = G.rabbits.slice().sort((a, b) => a.age - b.age);
-    const victim = Math.random() < 0.6 ? pool[Math.floor(Math.random() * Math.min(pool.length, 6))] : U.pick(G.rabbits);
-    G.rabbits = G.rabbits.filter(r => r !== victim);
+  if (S && !res.repelled && dogs.length && Math.random() < 0.55) {
+    const v = dogs.slice().sort((a, b) => a.hp - b.hp)[0];
+    res.taken = v.id; res.takenName = v.nm; G.dogs = G.dogs.filter(x => x !== v); G.stats.dogLost++;
   }
-  fightLog.stolen = steal; G.stats.lostWolf += steal;
-  const repelled = !free;
-  if (repelled) { G.stats.repel++; for (const g of G.dogs) if (dogs.includes(g)) { g.xp += 1 + fightLog.wolfDead; g.wins++; if (g.xp >= g.lv * 3) { g.lv++; g.xp = 0; g.atk += 2; F.log(`「${g.nm}」累積實戰經驗，升到 ${g.lv} 級！`, 'good'); } } }
-  /* 紀錄 */
-  let m = `🐺 ${n} 隻野狼夜襲！`;
-  if (!dogs.length) m += `沒有看門狗，被叼走 ${steal} 隻兔子。`;
-  else if (repelled) m += `看門狗英勇擊退了狼群${fightLog.wolfDead ? `（擊斃 ${fightLog.wolfDead} 隻）` : ''}！`;
-  else m += `狗狗擋不住，被叼走 ${steal} 隻兔子。`;
-  if (fightLog.killedDogs.length) m += `看門狗 ${fightLog.killedDogs.join('、')} 在搏鬥中犧牲了……`;
-  F.log(m, repelled && !fightLog.killedDogs.length ? 'good' : 'bad');
-  emit({ k: 'raid', r: fightLog, repelled });
+  if (res.repelled) {
+    G.stats.repel++;
+    for (const g of G.dogs) { g.xp += S ? 5 : 1 + Math.floor(n / 2); g.wins++; while (g.xp >= g.lv * 3) { g.xp -= g.lv * 3; g.lv++; g.atk += 2; F.log(`「${g.nm}」累積實戰經驗，升到 ${g.lv} 級！`, 'good'); } }
+    if (S) { res.bounty = 1500; G.money += 1500; G.stats.sWin++; }
+    F.addXP(S ? 60 : 8);
+  } else {
+    /* 狼衝進兔舍：只破壞門、嚇壞兔子，不會抓走兔子 */
+    const ok = G.doors.map((v, i) => (v ? i : -1)).filter(i => i >= 0);
+    const k = Math.min(ok.length, S ? 2 : 1 + (n >= 3 ? 1 : 0));
+    for (let i = 0; i < k; i++) { const j = ok.splice(Math.floor(Math.random() * ok.length), 1)[0]; G.doors[j] = 0; res.doors.push(j); G.stats.doorsBroken++; }
+    for (const r of G.rabbits) r.mood = Math.max(0, r.mood - 15);
+  }
+  let m = S ? '🐺💀 S 級狼人襲擊！' : `🐺 ${n} 隻野狼夜襲！`;
+  if (!dogs.length) m += '沒有看門狗……';
+  else if (res.repelled) m += S ? `看門狗們聯手擊退了狼人！獲得賞金 $1,500！` : '看門狗英勇擊退了狼群！狗狗受了點傷。';
+  else m += '狗狗擋不住，受傷了。';
+  if (res.taken) m += `「${res.takenName}」被狼人叼走了……`;
+  if (res.doors.length) m += `兔籠的門被抓壞了 ${res.doors.length} 扇，兔子嚇壞了（兔子都平安）。`;
+  F.log(m, res.repelled && !res.taken ? 'good' : 'bad');
+  emit({ k: 'raid', r: res });
   F.checkAch();
 };
-F.eagle = function () {
-  const kits = G.rabbits.filter(r => r.age < 6);
-  if (!kits.length || G.net) return;
-  const v = U.pick(kits); G.rabbits = G.rabbits.filter(r => r !== v); G.stats.lostEagle++;
-  F.log('🦅 老鷹從天而降，抓走了一隻幼兔！裝防鳥網可以避免。', 'bad'); emit({ k: 'eagle' });
+F.eagleScare = function () { const kits = G.rabbits.filter(r => r.age < 6); if (!kits.length || G.net) return; for (const r of kits) r.mood = Math.max(0, r.mood - 12); F.log('🦅 老鷹在天空盤旋，小兔子嚇得躲起來。裝防鳥網就不會了。', 'bad'); emit({ k: 'eagle' }); };
+
+/* ---------- 互動 ---------- */
+F.interact = function (r, act) {
+  const A = F.ACTS[act], P = F.PERS[r.pers];
+  if (!A) return { ok: false };
+  if (r.care[act]) return { ok: false, msg: `今天已經${A.n}過了，明天再來吧` };
+  if (A.cost && G.money < A.cost) return { ok: false, msg: '錢不夠' };
+  if (A.cost) { G.money -= A.cost; G.stats.spent += A.cost; }
+  r.care[act] = 1;
+  let mul = P.m[act];
+  if (r.pers === 'shy' && act === 'hug' && r.aff >= 40) mul = 2;
+  if (r.pers === 'tsun' && r.aff >= 60) mul = 1.6;
+  let react = 'happy', msg;
+  if (mul < 0) { r.aff = Math.max(0, r.aff - 2); r.mood = Math.max(0, r.mood - 3); react = 'run'; msg = `${r.nm}害羞地跑走了……（好感度 40 以上才肯讓你抱）`; }
+  else {
+    const gain = A.aff * mul; r.aff = Math.min(100, r.aff + gain); r.mood = Math.min(100, r.mood + A.mood * Math.min(1.5, mul));
+    react = mul >= 2 ? (r.pers === 'active' ? 'binky' : 'love') : mul < 0.8 ? 'meh' : 'happy';
+    if (r.pers === 'tsun' && r.aff < 60) msg = `${r.nm}把頭撇過去：「哼，才、才不是喜歡呢！」（好感 +${gain.toFixed(1)}）`;
+    else msg = mul >= 2 ? `${r.nm}超級開心！${act === 'play' ? '原地扭跳了一下！' : '眼睛都瞇起來了'}（好感 +${gain.toFixed(0)}）` : `${r.nm}很享受。（好感 +${gain.toFixed(1)}）`;
+    if (act === 'snack' && r.sick) msg += ' 吃了點東西精神好多了。';
+  }
+  G.stats.pets++; F.qp(act === 'pet' ? 'pet' : act === 'snack' ? 'snack' : 'care'); F.qp('anycare'); F.addXP(1);
+  const lv = F.affLv(r.aff);
+  if (lv > (r.affLvSeen || 0)) { r.affLvSeen = lv; F.log(`💗 你和「${r.nm}」的關係變成「${F.AFF_LV[lv]}」了！`, 'big'); }
+  F.checkAch();
+  return { ok: true, react, msg };
+};
+F.dogInteract = function (d, act) {
+  if (act === 'pet') { if (d.care.pet) return { ok: false, msg: '今天摸過了' }; d.care.pet = 1; d.aff = Math.min(100, d.aff + 5); F.qp('anycare'); return { ok: true, msg: `${d.nm}開心地搖尾巴！` }; }
+  if (act === 'train') { if (d.care.train) return { ok: false, msg: '今天訓練過了，讓牠休息吧' }; if (d.hp < 40) return { ok: false, msg: '牠受傷了，先讓獸醫看看' }; if (!F.spend(300)) return { ok: false, msg: '錢不夠（$300）' }; d.care.train = 1; d.atk += 1; d.hp = Math.max(5, d.hp - 8); return { ok: true, msg: `${d.nm}完成防衛訓練，攻擊力 +1（現在 ${d.atk}）` }; }
+  return { ok: false };
+};
+F.repairDoor = function () { const i = G.doors.findIndex(d => !d); if (i >= 0) { G.doors[i] = 1; F.log(`修好了第 ${i + 1} 座兔籠的門。`, 'good'); emit({ k: 'door', i }); } };
+F.collectGift = function (id) { const g = G.gifts.find(x => x.id === id); if (!g) return 0; G.gifts = G.gifts.filter(x => x !== g); G.money += g.v; G.stats.gifts++; G.stats.giftMoney += g.v; F.qp('gift'); F.addXP(2); return g.v; };
+F.rename = function (r, nm) { nm = String(nm || '').trim().slice(0, 8); if (nm) r.nm = nm; };
+
+/* ---------- 擺設 ---------- */
+F.freeSlot = () => { const used = new Set(G.decor.map(d => d.slot)); for (let i = 0; i < F.SLOTS; i++) if (!used.has(i)) return i; return -1; };
+F.buyDecor = function (t) {
+  const D = F.DEC[t]; if (!D) return 'no';
+  if (G.level < D.lv) return 'lv';
+  const s = F.freeSlot(); if (s < 0) return 'full';
+  if (!F.spend(D.price)) return 'money';
+  const it = { id: G.nid++, t, slot: s }; G.decor.push(it);
+  F.log(`擺上了「${D.n}」！兔子們好奇地圍過來看。`, 'good'); F.addXP(10); emit({ k: 'decorAdd', id: it.id }); F.checkAch();
+  return 'ok';
+};
+F.removeDecor = function (id) { const it = G.decor.find(d => d.id === id); if (!it) return; G.decor = G.decor.filter(d => d !== it); const back = Math.round(F.DEC[it.t].price * 0.5); G.money += back; F.log(`收起「${F.DEC[it.t].n}」，退回 $${back}。`, ''); emit({ k: 'decorDel', id }); };
+F.useDecor = function (r, t) { if (!r) return; const fav = F.PERS[r.pers].likes.includes(t); r.mood = Math.min(100, r.mood + (fav ? 0.8 : 0.4)); return fav; };
+
+/* ---------- 每日任務與等級 ---------- */
+F.QPOOL = [
+  { k: 'right', n: '答對 {g} 題行政法', g: [8, 12, 16] }, { k: 'hard', n: '答對 {g} 題 ⭐⭐⭐ 高難題', g: [1, 2, 3] }, { k: 'pet', n: '摸摸兔子 {g} 次', g: [3, 5, 8] },
+  { k: 'snack', n: '餵兔子零食 {g} 次', g: [2, 3, 4] }, { k: 'care', n: '幫兔子梳毛／陪玩／抱抱 {g} 次', g: [3, 5, 7] }, { k: 'clean', n: '打掃兔舍 {g} 次', g: [1, 1, 1] },
+  { k: 'gift', n: '收集兔子的禮物 {g} 個', g: [1, 2, 3] }, { k: 'review', n: '錯題複習答對 {g} 題', g: [3, 5, 8] }, { k: 'streak', n: '連續答對 {g} 題', g: [5, 8, 12] },
+];
+F.newQuests = function () {
+  if (G.quests && G.quests.day === G.day) return;
+  const pool = F.QPOOL.slice().sort(() => Math.random() - 0.5);
+  const tier = G.level < 4 ? 0 : G.level < 9 ? 1 : 2;
+  const list = [pool.find(q => q.k === 'right')].concat(pool.filter(q => q.k !== 'right').slice(0, 2)).map(q => ({ k: q.k, n: q.n.replace('{g}', q.g[tier]), goal: q.g[tier], prog: 0, claimed: 0 }));
+  G.quests = { day: G.day, list };
+};
+F.qp = function (k, v) { if (!G.quests) return; for (const q of G.quests.list) if (q.k === k && !q.claimed) { q.prog = k === 'streak' ? Math.max(q.prog, v || 0) : Math.min(q.goal, q.prog + (v || 1)); if (q.prog >= q.goal && !q.noted) { q.noted = 1; emit({ k: 'questDone', q }); } } };
+F.qReward = () => 150 + G.level * 40;
+F.claimQuest = function (i) { const q = G.quests && G.quests.list[i]; if (!q || q.claimed || q.prog < q.goal) return 0; q.claimed = 1; const v = F.qReward(); G.money += v; F.addXP(40); F.log(`✅ 完成每日任務「${q.n}」，獎勵 $${v}！`, 'good'); return v; };
+F.xpNeed = lv => Math.round(80 * Math.pow(lv, 1.35));
+F.addXP = function (v) {
+  G.xp += v;
+  while (G.level < 30 && G.xp >= F.xpNeed(G.level)) {
+    G.xp -= F.xpNeed(G.level); G.level++;
+    const bonus = 200 * G.level; G.money += bonus;
+    const un = F.DECOR.filter(d => d.lv === G.level).map(d => d.n);
+    F.log(`🎉 農場升到 ${G.level} 級！獎勵 $${U.fmt(bonus)}${un.length ? `，解鎖新擺設：${un.join('、')}` : ''}`, 'big');
+    emit({ k: 'levelup', lv: G.level });
+  }
 };
 
-/* ---------- 玩家動作 ---------- */
+/* ---------- 其他動作 ---------- */
 F.spend = function (c) { if (G.money < c) return false; G.money -= c; G.stats.spent += c; return true; };
 F.buy = function (id) {
   const it = F.SHOP.find(x => x.id === id); if (!it) return 'no';
   if (it.can && !it.can()) return 'no';
-  const p = F.price(it); if (!F.spend(p)) return 'money';
-  it.f(); if (id === 'fence') F.log(`圍籬升級為「${F.FENCE[G.fence].n}」，野狼更難闖進來了。`, 'good');
-  F.checkAch(); return 'ok';
+  if (it.lv && G.level < it.lv) return 'lv';
+  if (!F.spend(F.price(it))) return 'money';
+  it.f(); if (id === 'fence') F.log(`圍籬升級為「${F.FENCE[G.fence].n}」。`, 'good');
+  emit({ k: 'buy', id }); F.checkAch(); return 'ok';
 };
 F.cleanCost = () => 60 * G.hutch;
-F.doClean = function () { if (G.clean >= 98) return 'full'; if (!F.spend(F.cleanCost())) return 'money'; G.clean = 100; F.log('把兔舍打掃得乾乾淨淨。', 'good'); return 'ok'; };
-F.sellPrice = r => (r.age < 4 ? 0 : r.age < F.ADULT ? 180 : r.age > F.OLD ? 120 : r.sick ? 80 : 280);
-F.sell = function (kind) {
-  let pool = kind === 'kit' ? G.rabbits.filter(r => r.age >= 4 && r.age < F.ADULT) : kind === 'old' ? G.rabbits.filter(r => r.age > F.OLD) : F.adults(kind).filter(r => !r.preg && !r.nurse && r.age <= F.OLD);
-  if (!pool.length) return 0;
-  pool.sort((a, b) => b.age - a.age);
-  const r = kind === 'kit' ? pool[pool.length - 1] : pool[0];
-  const p = F.sellPrice(r);
+F.doClean = function () { if (G.clean >= 98) return 'full'; if (!F.spend(F.cleanCost())) return 'money'; G.clean = 100; F.qp('clean'); F.log('把兔舍打掃得乾乾淨淨，愛乾淨的兔子好開心。', 'good'); for (const r of G.rabbits) if (r.pers === 'neat') r.mood = Math.min(100, r.mood + 10); return 'ok'; };
+F.sellPrice = r => (r.age < 4 ? 0 : Math.round((r.age < F.ADULT ? 180 : r.age > F.OLD ? 150 : 280) * (1 + F.rarity(r.coat) * 0.35) * (0.8 + r.mood / 250)));
+F.sellOne = function (id) {
+  const r = G.rabbits.find(q => q.id === id); if (!r) return 0;
+  if (r.preg || r.nurse) return -1;
+  const p = F.sellPrice(r); if (!p) return 0;
   G.rabbits = G.rabbits.filter(q => q !== r); G.money += p; G.stats.sold++; G.stats.soldMoney += p;
-  F.log(`賣出${kind === 'm' ? '公兔' : kind === 'f' ? '母兔' : kind === 'kit' ? '幼兔' : '老兔'}「${r.nm}」，得到 $${p}。`, '');
+  F.log(`「${r.nm}」被一戶好人家領養了，得到 $${p}。`, ''); emit({ k: 'rabbitDel', id });
   return p;
 };
-F.summary = function () {
-  const R = G.rabbits;
-  return { total: R.length, m: R.filter(r => r.age >= F.ADULT && r.s === 'm').length, f: R.filter(r => r.age >= F.ADULT && r.s === 'f').length, kit: R.filter(r => r.age < F.ADULT).length, preg: R.filter(r => r.preg).length, sick: R.filter(r => r.sick).length, old: R.filter(r => r.age > F.OLD).length, hungry: R.filter(r => r.full < 30).length };
-};
+F.summary = function () { const R = G.rabbits; return { total: R.length, m: R.filter(r => r.age >= F.ADULT && r.s === 'm').length, f: R.filter(r => r.age >= F.ADULT && r.s === 'f').length, kit: R.filter(r => r.age < F.ADULT).length, preg: R.filter(r => r.preg).length, sick: R.filter(r => r.sick).length, happy: R.filter(r => r.mood >= 70).length, mood: R.length ? R.reduce((a, r) => a + r.mood, 0) / R.length : 0 }; };
+F.moodIc = m => (m >= 80 ? '😆' : m >= 60 ? '😊' : m >= 40 ? '🙂' : m >= 20 ? '😟' : '😢');
 
 /* ---------- 成就 ---------- */
 F.ACH = [
@@ -991,28 +1103,52 @@ F.ACH = [
   { id: 'exam60', n: '模擬考及格', d: '模擬考達 60 分', t: () => G.quiz.exams.some(e => e.score >= 60) },
   { id: 'exam90', n: '金榜題名', d: '模擬考達 90 分', t: () => G.quiz.exams.some(e => e.score >= 90) },
   { id: 'r20', n: '兔丁興旺', d: '同時擁有 20 隻兔子', t: () => G.rabbits.length >= 20 },
-  { id: 'r60', n: '兔子王國', d: '同時擁有 60 隻兔子', t: () => G.rabbits.length >= 60 },
-  { id: 'r120', n: '縱谷第一兔場', d: '同時擁有 120 隻兔子', t: () => G.rabbits.length >= 120 },
+  { id: 'r50', n: '兔子王國', d: '同時擁有 50 隻兔子', t: () => G.rabbits.length >= 50 },
+  { id: 'alb8', n: '花色收藏家', d: '圖鑑收集 8 種花色', t: () => Object.keys(G.album).length >= 8 },
+  { id: 'alb20', n: '兔子圖鑑大師', d: '圖鑑收集 20 種花色', t: () => Object.keys(G.album).length >= 20 },
+  { id: 'friend', n: '第一位摯友', d: '和一隻兔子成為摯友（好感 80）', t: () => G.rabbits.some(r => r.aff >= 80) },
+  { id: 'dec5', n: '佈置達人', d: '擺放 5 個擺設', t: () => G.decor.length >= 5 },
+  { id: 'dec12', n: '夢幻兔子樂園', d: '擺放 12 個擺設', t: () => G.decor.length >= 12 },
   { id: 'dog', n: '忠犬守護', d: '雇用第一隻看門狗', t: () => G.dogs.length >= 1 },
   { id: 'repel', n: '擊退狼群', d: '成功擊退野狼 1 次', t: () => G.stats.repel >= 1 },
   { id: 'repel10', n: '銅牆鐵壁', d: '成功擊退野狼 10 次', t: () => G.stats.repel >= 10 },
-  { id: 'fence3', n: '電圍籬', d: '把圍籬升級到電圍籬', t: () => G.fence >= 3 },
+  { id: 'swin', n: '狼人獵人', d: '擊退 S 級狼人', t: () => G.stats.sWin >= 1 },
+  { id: 'lv10', n: '知名農場', d: '農場達到 10 級', t: () => G.level >= 10 },
   { id: 'rich', n: '小有積蓄', d: '存款達 $20,000', t: () => G.money >= 20000 },
   { id: 'year', n: '一週年', d: '經營滿 1 年', t: () => G.day >= F.YEAR_DAYS },
 ];
 F.checkAch = function () { for (const a of F.ACH) if (!G.ach[a.id] && a.t()) { G.ach[a.id] = G.day + 1; F.log(`🏆 達成成就「${a.n}」：${a.d}`, 'big'); emit({ k: 'ach', a }); } };
+
+/* ---------- 舊存檔升級（v1 → v2）：保留答題紀錄、金錢、兔子 ---------- */
+F.migrate = function (d) {
+  if (d.v >= 2) { const b = F.blank(); for (const k in b) if (d[k] === undefined) d[k] = b[k]; for (const k in b.stats) if (d.stats[k] === undefined) d.stats[k] = 0; return d; }
+  const b = F.blank();
+  const colMap = ['white', 'fawn', 'gray', 'choco', 'cream', 'black'];
+  const o = Object.assign(b, { name: d.name, money: d.money, day: d.day, min: d.min, speed: d.speed ?? 1, hay: d.hay, pel: d.pel, med: d.med || 0, hutch: Math.min(F.MAX_HUTCH, d.hutch || 1), fence: d.fence || 0, net: d.net || 0, clean: d.clean ?? 80, nid: d.nid || 1000, log: d.log || [], quiz: d.quiz, ach: d.ach || {}, seenIntro: 1, seenV2: 0 });
+  o.doors = Array(o.hutch).fill(1);
+  o.rabbits = (d.rabbits || []).map(r => ({ id: r.id, s: r.s, age: r.age, hp: Math.max(30, r.hp), full: r.full, preg: r.preg || 0, nurse: r.nurse || 0, sick: r.sick ? 1 : 0, mood: 60, aff: 10, pers: U.pick(Object.keys(F.PERS)), coat: { c1: colMap[r.col] || 'brown', c2: 'white', pat: 'solid', br: 'std' }, nm: r.nm, care: {}, born: 0 }));
+  o.dogs = (d.dogs || []).map((g, i) => ({ id: g.id, nm: g.nm, ci: i % 6, hp: Math.max(20, g.hp), atk: g.atk, lv: g.lv || 1, xp: g.xp || 0, hungry: 0, wins: g.wins || 0, aff: 10, care: {} }));
+  for (const k in o.stats) if (d.stats && d.stats[k] !== undefined) o.stats[k] = d.stats[k];
+  for (const r of o.rabbits) o.album[F.coatKey(r.coat)] = 1;
+  o.level = 1 + Math.min(8, Math.floor((d.quiz ? d.quiz.right : 0) / 60));
+  return o;
+};
 
 /* ---------- 存檔 ---------- */
 F.KEY = 'rabbit_law_farm_v1';
 F.save = function () { try { const s = JSON.stringify(G); const p = localStorage.getItem(F.KEY); if (p) localStorage.setItem(F.KEY + '_bak', p); localStorage.setItem(F.KEY, s); return true; } catch (e) { return false; } };
 F.load = function () {
   for (const k of [F.KEY, F.KEY + '_bak']) {
-    try { const d = JSON.parse(localStorage.getItem(k)); if (d && d.rabbits && d.quiz) { for (const q of Object.keys(G)) delete G[q]; Object.assign(G, d); return true; } } catch (e) { /* 試下一份 */ }
+    try { const d = JSON.parse(localStorage.getItem(k)); if (d && d.rabbits && d.quiz) { const m = F.migrate(d); for (const q of Object.keys(G)) delete G[q]; Object.assign(G, m); F.newQuests(); return true; } } catch (e) { /* 試下一份 */ }
   }
   return false;
 };
 F.peek = function () { try { return JSON.parse(localStorage.getItem(F.KEY)); } catch (e) { return null; } };
 F.wipe = function () { try { localStorage.removeItem(F.KEY); localStorage.removeItem(F.KEY + '_bak'); } catch (e) { /* 略 */ } };
+F.exportSave = () => 'RLF2:' + btoa(unescape(encodeURIComponent(JSON.stringify(G))));
+F.importSave = function (s) {
+  try { s = String(s).trim().replace(/^RLF2:/, ''); const d = JSON.parse(decodeURIComponent(escape(atob(s)))); if (!d.rabbits || !d.quiz) return false; const m = F.migrate(d); for (const q of Object.keys(G)) delete G[q]; Object.assign(G, m); F.save(); return true; } catch (e) { return false; }
+};
 })();
 
 </script>
@@ -1093,323 +1229,1075 @@ Q.examPay = (score, n) => Math.round(score / 100 * n * 110 * Q.rank().mul * (sco
 
 </script>
 <script>
-/* 美術：農場側視場景（天空晝夜、季節草地、森林、圍籬、兔籠、狗屋、飼料槽）、兔子與小狗動畫、野狼夜襲、老鷹、天氣 */
+/* 自製 WebGL 3D 引擎：矩陣、基本幾何、節點階層、柔光著色（半球光＋太陽＋兩盞點光源＋邊緣光＋霧）、
+   毛皮殼層（fur shells）、透明層、靜態網格合併、螢幕投影 */
 (function () {
 'use strict';
-const TAU = Math.PI * 2;
-const A = window.A = { sprites: new Map(), fx: [], wolves: [], eagle: null };
-const E = (c, x, y, rx, ry, f, s, lw, rot) => { c.beginPath(); c.ellipse(x, y, Math.max(0.1, rx), Math.max(0.1, ry), rot || 0, 0, TAU); if (f) { c.fillStyle = f; c.fill(); } if (s) { c.strokeStyle = s; c.lineWidth = lw || 1.5; c.stroke(); } };
-const RR = (c, x, y, w, h, r) => { r = Math.min(r, Math.abs(w) / 2, Math.abs(h) / 2); c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath(); };
-const box = (c, x, y, w, h, f, r, s) => { RR(c, x, y, w, h, r || 3); c.fillStyle = f; c.fill(); if (s) { c.strokeStyle = s; c.lineWidth = 1.5; c.stroke(); } };
-const mix = (a, b, f) => { const p = parseInt(a.slice(1), 16), q = parseInt(b.slice(1), 16); const m = s => Math.round(((p >> s) & 255) + ((((q >> s) & 255) - ((p >> s) & 255)) * f)); return `rgb(${m(16)},${m(8)},${m(0)})`; };
-Object.assign(A, { E, RR, box, mix });
-
-/* 天空：依時刻 */
-A.sky = function (min) {
-  const h = min / 60;
-  const K = [[0, '#0d1630', '#1d2a4c', 1], [4.5, '#16203f', '#3a3c64', 0.9], [5.5, '#e7987a', '#f8d6a6', 0.35], [7, '#86c2ea', '#d9f0fb', 0], [17, '#86c2ea', '#e4f4fb', 0], [18.3, '#ee8a5c', '#fbc890', 0.3], [19.3, '#3b3a6a', '#7a5a7a', 0.75], [20.3, '#0d1630', '#1d2a4c', 1], [24, '#0d1630', '#1d2a4c', 1]];
-  let a = K[0], b = K[1]; for (let i = 0; i < K.length - 1; i++) if (h >= K[i][0] && h <= K[i + 1][0]) { a = K[i]; b = K[i + 1]; break; }
-  const f = (h - a[0]) / Math.max(0.01, b[0] - a[0]);
-  return { top: mix(a[1], b[1], f), bot: mix(a[2], b[2], f), night: a[3] + (b[3] - a[3]) * f };
+const G3 = window.G3 = {};
+/* ---------- 矩陣 ---------- */
+const M4 = G3.M4 = {
+  id: () => { const m = new Float32Array(16); m[0] = m[5] = m[10] = m[15] = 1; return m; },
+  mul(a, b, o) {
+    o = o || new Float32Array(16);
+    for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) o[c * 4 + r] = a[r] * b[c * 4] + a[4 + r] * b[c * 4 + 1] + a[8 + r] * b[c * 4 + 2] + a[12 + r] * b[c * 4 + 3];
+    return o;
+  },
+  persp(fov, asp, n, f) { const t = 1 / Math.tan(fov / 2), m = new Float32Array(16); m[0] = t / asp; m[5] = t; m[10] = (f + n) / (n - f); m[11] = -1; m[14] = 2 * f * n / (n - f); return m; },
+  look(e, c, u) {
+    let zx = e[0] - c[0], zy = e[1] - c[1], zz = e[2] - c[2]; let l = Math.hypot(zx, zy, zz); zx /= l; zy /= l; zz /= l;
+    let xx = u[1] * zz - u[2] * zy, xy = u[2] * zx - u[0] * zz, xz = u[0] * zy - u[1] * zx; l = Math.hypot(xx, xy, xz); xx /= l; xy /= l; xz /= l;
+    const yx = zy * xz - zz * xy, yy = zz * xx - zx * xz, yz = zx * xy - zy * xx;
+    const m = new Float32Array(16);
+    m[0] = xx; m[1] = yx; m[2] = zx; m[4] = xy; m[5] = yy; m[6] = zy; m[8] = xz; m[9] = yz; m[10] = zz;
+    m[12] = -(xx * e[0] + xy * e[1] + xz * e[2]); m[13] = -(yx * e[0] + yy * e[1] + yz * e[2]); m[14] = -(zx * e[0] + zy * e[1] + zz * e[2]); m[15] = 1;
+    return m;
+  },
+  /* T * Ry * Rx * Rz * S */
+  trs(p, r, s, o) {
+    o = o || new Float32Array(16);
+    const cy = Math.cos(r[1]), sy = Math.sin(r[1]), cx = Math.cos(r[0]), sx = Math.sin(r[0]), cz = Math.cos(r[2]), sz = Math.sin(r[2]);
+    /* R = Ry*Rx*Rz */
+    const r00 = cy * cz + sy * sx * sz, r01 = -cy * sz + sy * sx * cz, r02 = sy * cx;
+    const r10 = cx * sz, r11 = cx * cz, r12 = -sx;
+    const r20 = -sy * cz + cy * sx * sz, r21 = sy * sz + cy * sx * cz, r22 = cy * cx;
+    o[0] = r00 * s[0]; o[1] = r10 * s[0]; o[2] = r20 * s[0]; o[3] = 0;
+    o[4] = r01 * s[1]; o[5] = r11 * s[1]; o[6] = r21 * s[1]; o[7] = 0;
+    o[8] = r02 * s[2]; o[9] = r12 * s[2]; o[10] = r22 * s[2]; o[11] = 0;
+    o[12] = p[0]; o[13] = p[1]; o[14] = p[2]; o[15] = 1;
+    return o;
+  },
+  nrm(m, o) { /* 3x3 反轉置 */
+    const a = m[0], b = m[1], c = m[2], d = m[4], e = m[5], f = m[6], g = m[8], h = m[9], i = m[10];
+    const A = e * i - f * h, B = -(d * i - f * g), C = d * h - e * g, det = a * A + b * B + c * C || 1e-9, k = 1 / det;
+    o = o || new Float32Array(9);
+    o[0] = A * k; o[1] = B * k; o[2] = C * k;
+    o[3] = -(b * i - c * h) * k; o[4] = (a * i - c * g) * k; o[5] = -(a * h - b * g) * k;
+    o[6] = (b * f - c * e) * k; o[7] = -(a * f - c * d) * k; o[8] = (a * e - b * d) * k;
+    return o;
+  },
+  apply(m, v) { const x = v[0], y = v[1], z = v[2], w = m[3] * x + m[7] * y + m[11] * z + m[15]; return [(m[0] * x + m[4] * y + m[8] * z + m[12]) / w, (m[1] * x + m[5] * y + m[9] * z + m[13]) / w, (m[2] * x + m[6] * y + m[10] * z + m[14]) / w, w]; },
 };
 
-/* 地面帶：兔子活動範圍（正規化座標 → 畫面座標） */
-A.layout = function (W, H) {
-  const gTop = H * 0.52, gBot = H - 8;
-  return { W, H, gTop, gBot, fenceX: W * 0.2, forestX: W * 0.12, hutchX0: W * 0.6, dogX: W * 0.3 };
-};
-const LX = (L, nx) => L.fenceX + 24 + nx * (L.W - L.fenceX - 40);
-const LY = (L, ny) => L.gTop + 18 + ny * (L.gBot - L.gTop - 26);
+/* ---------- 基本幾何（原始資料） ---------- */
+const RAW = G3.RAW = {};
+function sphereRaw(ws, hs) {
+  const p = [], n = [], ix = [];
+  for (let y = 0; y <= hs; y++) { const v = y / hs, th = v * Math.PI; for (let x = 0; x <= ws; x++) { const u = x / ws, ph = u * Math.PI * 2; const sx = -Math.cos(ph) * Math.sin(th), sy = Math.cos(th), sz = Math.sin(ph) * Math.sin(th); p.push(sx, sy, sz); n.push(sx, sy, sz); } }
+  for (let y = 0; y < hs; y++) for (let x = 0; x < ws; x++) { const a = y * (ws + 1) + x, b = a + ws + 1; if (y) ix.push(a, b, a + 1); if (y < hs - 1) ix.push(a + 1, b, b + 1); }
+  return { p, n, ix };
+}
+function boxRaw() {
+  const p = [], n = [], ix = [];
+  const F = [[0, 0, 1], [0, 0, -1], [1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0]];
+  for (const f of F) {
+    const u = f[1] ? [1, 0, 0] : [0, 1, 0], w = [f[1] * u[2] - f[2] * u[1], f[2] * u[0] - f[0] * u[2], f[0] * u[1] - f[1] * u[0]];
+    const b = p.length / 3;
+    for (const [s, t] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) { p.push((f[0] + u[0] * s + w[0] * t) / 2, (f[1] + u[1] * s + w[1] * t) / 2, (f[2] + u[2] * s + w[2] * t) / 2); n.push(...f); }
+    ix.push(b, b + 1, b + 2, b, b + 2, b + 3);
+  }
+  /* 確保逆時針朝外 */
+  for (let i = 0; i < ix.length; i += 3) { const a = ix[i] * 3, b = ix[i + 1] * 3, c = ix[i + 2] * 3; const ux = p[b] - p[a], uy = p[b + 1] - p[a + 1], uz = p[b + 2] - p[a + 2], vx = p[c] - p[a], vy = p[c + 1] - p[a + 1], vz = p[c + 2] - p[a + 2]; const cx = uy * vz - uz * vy, cy = uz * vx - ux * vz, cz = ux * vy - uy * vx; if (cx * n[a] + cy * n[a + 1] + cz * n[a + 2] < 0) { const t = ix[i + 1]; ix[i + 1] = ix[i + 2]; ix[i + 2] = t; } }
+  return { p, n, ix };
+}
+function cylRaw(seg, rt, cap) {
+  /* 高度 1（-0.5～0.5），底半徑 1，頂半徑 rt */
+  const p = [], n = [], ix = [];
+  const sl = 1 - rt;
+  for (let i = 0; i <= seg; i++) { const a = i / seg * Math.PI * 2, c = Math.cos(a), s = Math.sin(a); const ny = sl, l = Math.hypot(1, ny); p.push(c, -0.5, s, c * rt, 0.5, s * rt); n.push(c / l, ny / l, s / l, c / l, ny / l, s / l); }
+  for (let i = 0; i < seg; i++) { const a = i * 2; ix.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
+  if (cap) for (const [y, r, ny] of [[0.5, rt, 1], [-0.5, 1, -1]]) { if (r <= 0) continue; const c0 = p.length / 3; p.push(0, y, 0); n.push(0, ny, 0); for (let i = 0; i <= seg; i++) { const a = i / seg * Math.PI * 2; p.push(Math.cos(a) * r, y, Math.sin(a) * r); n.push(0, ny, 0); } for (let i = 0; i < seg; i++) ny > 0 ? ix.push(c0, c0 + i + 2, c0 + i + 1) : ix.push(c0, c0 + i + 1, c0 + i + 2); }
+  return { p, n, ix };
+}
+function discRaw(seg) { const p = [0, 0, 0], n = [0, 1, 0], ix = []; for (let i = 0; i <= seg; i++) { const a = i / seg * Math.PI * 2; p.push(Math.cos(a), 0, Math.sin(a)); n.push(0, 1, 0); } for (let i = 0; i < seg; i++) ix.push(0, i + 2, i + 1); return { p, n, ix }; }
+function torusRaw(R, r, s1, s2) { const p = [], n = [], ix = []; for (let i = 0; i <= s1; i++) { const u = i / s1 * Math.PI * 2; for (let j = 0; j <= s2; j++) { const v = j / s2 * Math.PI * 2; const cx = Math.cos(u), sx = Math.sin(u); p.push((R + r * Math.cos(v)) * cx, r * Math.sin(v), (R + r * Math.cos(v)) * sx); n.push(Math.cos(v) * cx, Math.sin(v), Math.cos(v) * sx); } } for (let i = 0; i < s1; i++) for (let j = 0; j < s2; j++) { const a = i * (s2 + 1) + j, b = a + s2 + 1; ix.push(a, a + 1, b, b, a + 1, b + 1); } return { p, n, ix }; }
+function prismRaw() { /* 三角屋頂：底寬 1、高 1、深 1 */
+  const P = [[-0.5, 0, 0.5], [0.5, 0, 0.5], [0, 1, 0.5], [-0.5, 0, -0.5], [0.5, 0, -0.5], [0, 1, -0.5]];
+  const tris = [[0, 1, 2], [4, 3, 5], [3, 0, 2], [3, 2, 5], [1, 4, 5], [1, 5, 2], [3, 4, 1], [3, 1, 0]];
+  const p = [], n = [], ix = [];
+  for (const t of tris) { const a = P[t[0]], b = P[t[1]], c = P[t[2]]; const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2], vx = c[0] - a[0], vy = c[1] - a[1], vz = c[2] - a[2]; let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx; const l = Math.hypot(nx, ny, nz); nx /= l; ny /= l; nz /= l; const k = p.length / 3; for (const q of [a, b, c]) { p.push(...q); n.push(nx, ny, nz); } ix.push(k, k + 1, k + 2); }
+  return { p, n, ix };
+}
+RAW.sphere = sphereRaw(22, 14); RAW.sphereLo = sphereRaw(12, 8); RAW.box = boxRaw(); RAW.cyl = cylRaw(16, 1, true); RAW.cone = cylRaw(16, 0, true); RAW.cone6 = cylRaw(7, 0, true); RAW.disc = discRaw(20); RAW.torus = torusRaw(1, 0.25, 20, 8); RAW.prism = prismRaw(); RAW.cylLo = cylRaw(8, 1, true);
+RAW.frustum = cylRaw(16, 0.7, true);
 
-/* ---------- 兔子 ---------- */
-A.rabbit = function (c, x, y, s, col, face, t, hop, o) {
+/* ---------- WebGL ---------- */
+const VS = `attribute vec3 p;attribute vec3 n;attribute vec3 c;uniform mat4 M,VP;uniform mat3 NM;uniform float sh;varying vec3 vN,vW,vC,vO;
+void main(){vec3 q=p+n*sh;vec4 w=M*vec4(q,1.);vW=w.xyz;vN=normalize(NM*n);vC=c;vO=q;gl_Position=VP*w;}`;
+const FS = `precision highp float;varying vec3 vN,vW,vC,vO;
+uniform vec3 col,emis,sunD,sunC,skyC,gndC,fogC,cam,tint,pl0,pc0,pl1,pc1;uniform float useVC,spec,rim,alpha,fogN,fogF,shL,furD,flash;
+float hs(vec3 p){p=fract(p*0.3183099+.1);p*=17.;return fract(p.x*p.y*p.z*(p.x+p.y+p.z));}
+void main(){
+ if(shL>0.){float h=hs(floor(vO*furD));if(h<shL)discard;}
+ vec3 b=mix(col,vC*tint,useVC);
+ vec3 N=normalize(vN);if(!gl_FrontFacing)N=-N;vec3 V=normalize(cam-vW);
+ vec3 L=mix(gndC,skyC,N.y*.5+.5);
+ float d=dot(N,sunD);L+=sunC*max(0.,(d+.4)/1.4);
+ vec3 q=pl0-vW;float dl=length(q);L+=pc0*max(0.,dot(N,q/dl)*.6+.4)/(1.+dl*dl*.35);
+ q=pl1-vW;dl=length(q);L+=pc1*max(0.,dot(N,q/dl)*.6+.4)/(1.+dl*dl*.35);
+ vec3 o=b*L;
+ if(spec>0.){vec3 H=normalize(sunD+V);o+=(sunC+skyC*.5)*pow(max(dot(N,H),0.),spec)*.7;}
+ float fr=pow(1.-max(dot(N,V),0.),2.5);o+=rim*fr*(skyC*.55+sunC*.35);
+ o+=emis;
+ if(shL>0.)o*=.9+shL*.16;
+ o=mix(o,vec3(1.,.25,.2),flash);
+ float f=smoothstep(fogN,fogF,length(vW-cam));o=mix(o,fogC,f);
+ gl_FragColor=vec4(o,alpha);}`;
+G3.init = function (canvas) {
+  const gl = canvas.getContext('webgl', { antialias: true, alpha: false, premultipliedAlpha: false, powerPreference: 'high-performance' });
+  if (!gl) return null;
+  G3.gl = gl; G3.u32 = !!gl.getExtension('OES_element_index_uint');
+  const sh = (t, s) => { const o = gl.createShader(t); gl.shaderSource(o, s); gl.compileShader(o); if (!gl.getShaderParameter(o, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(o)); return o; };
+  const pr = gl.createProgram(); gl.attachShader(pr, sh(gl.VERTEX_SHADER, VS)); gl.attachShader(pr, sh(gl.FRAGMENT_SHADER, FS)); gl.linkProgram(pr);
+  if (!gl.getProgramParameter(pr, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(pr));
+  gl.useProgram(pr); G3.pr = pr;
+  G3.a = { p: gl.getAttribLocation(pr, 'p'), n: gl.getAttribLocation(pr, 'n'), c: gl.getAttribLocation(pr, 'c') };
+  G3.u = {};
+  for (const k of ['M', 'VP', 'NM', 'sh', 'col', 'emis', 'sunD', 'sunC', 'skyC', 'gndC', 'fogC', 'cam', 'tint', 'pl0', 'pc0', 'pl1', 'pc1', 'useVC', 'spec', 'rim', 'alpha', 'fogN', 'fogF', 'shL', 'furD', 'flash']) G3.u[k] = gl.getUniformLocation(pr, k);
+  gl.enable(gl.DEPTH_TEST); gl.enable(gl.CULL_FACE); gl.cullFace(gl.BACK);
+  G3.white = null;
+  for (const k in RAW) RAW[k].mesh = G3.mesh(RAW[k]);
+  return gl;
+};
+G3.mesh = function (r) {
+  const gl = G3.gl;
+  const mk = (data, T) => { const b = gl.createBuffer(); gl.bindBuffer(T, b); gl.bufferData(T, data, gl.STATIC_DRAW); return b; };
+  const big = r.p.length / 3 > 65535;
+  const m = { pb: mk(new Float32Array(r.p), gl.ARRAY_BUFFER), nb: mk(new Float32Array(r.n), gl.ARRAY_BUFFER), cb: r.c ? mk(new Float32Array(r.c), gl.ARRAY_BUFFER) : null, ib: mk(big ? new Uint32Array(r.ix) : new Uint16Array(r.ix), gl.ELEMENT_ARRAY_BUFFER), cnt: r.ix.length, it: big ? gl.UNSIGNED_INT : gl.UNSIGNED_SHORT };
+  return m;
+};
+/* 合併靜態物件（帶頂點色） */
+G3.Builder = function () { this.p = []; this.n = []; this.c = []; this.ix = []; };
+G3.Builder.prototype.add = function (raw, mat, color, jitter) {
+  const b = this.p.length / 3, nm = M4.nrm(mat);
+  for (let i = 0; i < raw.p.length; i += 3) {
+    const v = M4.apply(mat, [raw.p[i], raw.p[i + 1], raw.p[i + 2]]); this.p.push(v[0], v[1], v[2]);
+    const x = raw.n[i], y = raw.n[i + 1], z = raw.n[i + 2]; let nx = nm[0] * x + nm[3] * y + nm[6] * z, ny = nm[1] * x + nm[4] * y + nm[7] * z, nz = nm[2] * x + nm[5] * y + nm[8] * z; const l = Math.hypot(nx, ny, nz) || 1; this.n.push(nx / l, ny / l, nz / l);
+    const j = jitter ? 1 + (Math.sin(v[0] * 12.9 + v[2] * 78.2 + v[1] * 3.1) * 43758.5 % 1) * jitter : 1;
+    this.c.push(color[0] * j, color[1] * j, color[2] * j);
+  }
+  for (const k of raw.ix) this.ix.push(k + b);
+};
+G3.Builder.prototype.build = function () {
+  if (!G3.u32 && this.p.length / 3 > 65535) console.warn('合併網格過大');
+  return G3.mesh({ p: this.p, n: this.n, c: this.c, ix: this.ix });
+};
+
+/* ---------- 節點 ---------- */
+G3.hex = h => { const n = parseInt(h.slice(1), 16); return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255]; };
+G3.Node = function (o) {
   o = o || {};
-  c.save(); c.translate(x, y); c.scale(face < 0 ? -s : s, s);
-  const b = hop ? -Math.abs(Math.sin(t * 9)) * 7 : 0;
-  E(c, 0, 2, 13, 3, 'rgba(0,0,0,0.18)');
-  c.translate(0, b);
-  const dark = mix(col.length === 7 ? col : '#f7f3ec', '#000000', 0.18);
-  E(c, -2, -9, 13, 10, col, 'rgba(40,30,20,0.35)', 1.2);           /* 身體 */
-  E(c, -13, -11, 4, 4, '#ffffff');                                  /* 尾巴 */
-  E(c, 9, -16, 7.5, 7, col, 'rgba(40,30,20,0.35)', 1.2);           /* 頭 */
-  const ear = o.sleep ? 0.9 : Math.sin(t * 2) * 0.08;
-  c.save(); c.translate(6, -21); c.rotate(-0.25 + ear); E(c, 0, -8, 2.8, 8.5, col, 'rgba(40,30,20,0.35)', 1); E(c, 0, -8, 1.3, 6, '#f2b6b6'); c.restore();
-  c.save(); c.translate(10, -21); c.rotate(0.12 + ear); E(c, 0, -8, 2.8, 8.5, dark); c.restore();
-  if (o.sleep) { c.strokeStyle = '#2b2622'; c.lineWidth = 1.2; c.beginPath(); c.moveTo(10, -17); c.lineTo(13, -17); c.stroke(); }
-  else { E(c, 12, -17, 1.6, 1.8, '#2b2622'); E(c, 12.5, -17.6, 0.5, 0.5, '#fff'); }
-  E(c, 16, -14.5, 1.3, 1, '#e98a9a');
-  E(c, 4, -1.5, 4, 2.2, dark);                                      /* 腳 */
-  if (o.sick) { c.font = '10px sans-serif'; c.fillText('🤒', 4, -34); }
-  if (o.preg) { E(c, -2, -5, 8, 5, 'rgba(255,190,210,0.35)'); }
-  c.restore();
+  this.mesh = o.mesh || null; this.pos = o.pos || [0, 0, 0]; this.rot = o.rot || [0, 0, 0]; this.scl = o.scl || [1, 1, 1];
+  this.col = typeof o.col === 'string' ? G3.hex(o.col) : o.col || [1, 1, 1]; this.emis = o.emis || [0, 0, 0];
+  this.spec = o.spec || 0; this.rim = o.rim == null ? 0.25 : o.rim; this.alpha = o.alpha == null ? 1 : o.alpha; this.fur = o.fur || null;
+  this.vc = !!o.vc; this.kids = []; this.visible = true; this.flash = 0; this.noCull = !!o.noCull;
+  this.L = new Float32Array(16); this.W = new Float32Array(16); this.name = o.name || '';
 };
-/* ---------- 狗 ---------- */
-A.dog = function (c, x, y, s, face, t, run, o) {
-  o = o || {};
-  c.save(); c.translate(x, y); c.scale(face < 0 ? -s : s, s);
-  E(c, 0, 2, 22, 4, 'rgba(0,0,0,0.2)');
-  const ph = run ? Math.sin(t * 16) : Math.sin(t * 3) * 0.2, col = o.col || '#b07840', dk = '#7a5028';
-  for (const [dx, k] of [[-12, 1], [-6, -1], [10, 1], [15, -1]]) { c.save(); c.translate(dx, -10); c.rotate(ph * 0.5 * k); c.fillStyle = k > 0 ? dk : col; c.fillRect(-2.5, 0, 5, 12); c.restore(); }
-  E(c, 0, -15, 19, 9, col, 'rgba(40,25,10,0.4)', 1.2);
-  c.save(); c.translate(-18, -18); c.rotate(-0.6 + Math.sin(t * 10) * 0.3); E(c, -6, 0, 7, 2.5, col); c.restore();
-  E(c, 19, -24, 9, 8, col, 'rgba(40,25,10,0.4)', 1.2);
-  E(c, 27, -21, 5, 3.5, '#d8b088'); E(c, 31, -22, 2, 1.6, '#2b2622');
-  c.save(); c.translate(15, -30); c.rotate(-0.3); E(c, 0, 4, 3.5, 7, dk); c.restore();
-  E(c, 22, -26, 1.6, 1.8, o.night ? '#ffe680' : '#2b2622');
-  c.fillStyle = '#c8402a'; c.fillRect(11, -22, 6, 3);
-  if (o.hurt) { c.font = '10px sans-serif'; c.fillText('🩹', 10, -38); }
-  c.restore();
-};
-/* ---------- 狼 ---------- */
-A.wolf = function (c, x, y, s, face, t, run, glow) {
-  c.save(); c.translate(x, y); c.scale(face < 0 ? -s : s, s);
-  E(c, 0, 2, 26, 4, 'rgba(0,0,0,0.25)');
-  const ph = run ? Math.sin(t * 18) : 0, col = '#5b5f66', dk = '#3d4046';
-  for (const [dx, k] of [[-14, 1], [-7, -1], [12, 1], [18, -1]]) { c.save(); c.translate(dx, -12); c.rotate(ph * 0.6 * k); c.fillStyle = k > 0 ? dk : col; c.fillRect(-2.5, 0, 5, 14); c.restore(); }
-  E(c, 0, -18, 23, 10, col, 'rgba(0,0,0,0.4)', 1.2);
-  c.save(); c.translate(-22, -20); c.rotate(-0.25); E(c, -8, 0, 11, 4, col); c.restore();
-  E(c, 23, -26, 10, 8, col); c.beginPath(); c.moveTo(28, -28); c.lineTo(42, -22); c.lineTo(28, -19); c.fillStyle = col; c.fill();
-  c.beginPath(); c.moveTo(18, -31); c.lineTo(21, -42); c.lineTo(25, -32); c.fillStyle = dk; c.fill();
-  E(c, 28, -27, 2, 1.6, glow ? '#ffd23a' : '#e9e2c0');
-  if (glow) { E(c, 28, -27, 5, 4, 'rgba(255,210,60,0.25)'); }
-  c.restore();
-};
+G3.Node.prototype.add = function (...k) { for (const x of k) this.kids.push(x); return this; };
+G3.n = (mesh, o) => new G3.Node(Object.assign({ mesh: RAW[mesh] ? RAW[mesh].mesh : mesh }, o || {}));
+G3.grp = (o) => new G3.Node(o);
 
-/* ---------- 場景 ---------- */
-A.draw = function (c, W, H, t, st) {
-  const L = A.layout(W, H), sk = A.sky(G.min), night = sk.night, season = F.season();
-  /* 天空 */
-  c.fillStyle = (() => { const g = c.createLinearGradient(0, 0, 0, L.gTop); g.addColorStop(0, sk.top); g.addColorStop(1, sk.bot); return g; })(); c.fillRect(0, 0, W, L.gTop + 4);
-  if (night > 0.5) { c.fillStyle = `rgba(255,255,235,${(night - 0.5) * 1.6})`; for (let i = 0; i < 50; i++) c.fillRect((Math.sin(i * 91.3) * 0.5 + 0.5) * W, (Math.sin(i * 37.7) * 0.5 + 0.5) * L.gTop * 0.7, 1.6, 1.6); E(c, W * 0.82, L.gTop * 0.22, 16, 16, '#fff6d8'); E(c, W * 0.82 + 6, L.gTop * 0.22 - 3, 14, 14, sk.top); }
-  else if (G.weather !== '雨' && G.weather !== '颱風') { const h = G.min / 60, sx = W * (0.1 + (h - 5) / 14 * 0.8), sy = L.gTop * (0.18 + Math.abs(h - 12) / 7 * 0.45); E(c, sx, sy, 20, 20, h > 17 || h < 7 ? '#ffb070' : '#fff3c4'); E(c, sx, sy, 30, 30, 'rgba(255,240,180,0.25)'); }
-  /* 雲 */
-  for (let i = 0; i < 4; i++) { const x = ((i * 310 + t * 8) % (W + 300)) - 150, y = L.gTop * (0.15 + i * 0.09); c.fillStyle = `rgba(255,255,255,${G.weather === '晴' ? 0.75 : 0.9})`; if (G.weather !== '晴') c.fillStyle = `rgba(${200 - night * 120},${205 - night * 120},${215 - night * 110},0.9)`; E(c, x, y, 48, 14, c.fillStyle); E(c, x + 30, y - 8, 30, 14, c.fillStyle); E(c, x - 28, y - 4, 24, 11, c.fillStyle); }
-  /* 遠山 */
-  const dk = night * 0.65;
-  const mtn = (base, amp, col, k) => { c.fillStyle = mix(col, '#0a1020', dk); c.beginPath(); c.moveTo(0, L.gTop); for (let i = 0; i <= 30; i++) c.lineTo(W * i / 30, L.gTop * base - amp * L.gTop * (0.55 + 0.3 * Math.sin(i * k) + 0.15 * Math.sin(i * k * 2.3 + 1))); c.lineTo(W, L.gTop); c.fill(); };
-  mtn(1, 0.38, season === 3 ? '#9aa8b8' : '#7f9db6', 0.42); mtn(1, 0.2, season === 2 ? '#8a9a5a' : season === 3 ? '#8a9a8a' : '#5e8f62', 0.7);
-  /* 草地 */
-  const gcol = ['#8cc65a', '#6fb04a', '#c2b35a', '#c9d0c0'][season];
-  const g = c.createLinearGradient(0, L.gTop, 0, H); g.addColorStop(0, mix(gcol, '#0a1020', dk)); g.addColorStop(1, mix(mix(gcol, '#3a5a20', 0.35), '#0a1020', dk)); c.fillStyle = g; c.fillRect(0, L.gTop, W, H - L.gTop);
-  c.strokeStyle = mix(mix(gcol, '#3a5a20', 0.25), '#0a1020', dk); c.lineWidth = 1;
-  for (let i = 0; i < 40; i++) { const x = (Math.sin(i * 12.9) * 0.5 + 0.5) * W, y = L.gTop + 10 + (Math.sin(i * 7.3) * 0.5 + 0.5) * (H - L.gTop - 14); c.beginPath(); c.moveTo(x, y); c.lineTo(x - 2, y - 6); c.moveTo(x, y); c.lineTo(x + 2, y - 7); c.stroke(); }
-  if (season === 3) { c.fillStyle = `rgba(255,255,255,${0.55 - dk * 0.3})`; for (let i = 0; i < 14; i++) E(c, (Math.sin(i * 5.1) * 0.5 + 0.5) * W, L.gTop + 10 + (Math.sin(i * 3.7) * 0.5 + 0.5) * (H - L.gTop - 20), 26, 6, c.fillStyle); }
-  if (season === 0) for (let i = 0; i < 18; i++) E(c, (Math.sin(i * 8.1) * 0.5 + 0.5) * W, L.gTop + 14 + (Math.sin(i * 4.9) * 0.5 + 0.5) * (H - L.gTop - 24), 2.5, 2.5, ['#ffd6e6', '#fff3a8', '#ffffff'][i % 3]);
-  /* 森林（左側，野狼出沒） */
-  for (let i = 0; i < 9; i++) { const x = -10 + i * (L.forestX + 20) / 8, y = L.gTop + 16 + (i % 3) * 22, h = 70 + (i * 37 % 40); c.fillStyle = mix('#5a3e28', '#000', dk); c.fillRect(x - 3, y - 10, 6, 14); c.fillStyle = mix(season === 2 ? '#7a6a2a' : '#2f5a32', '#050a10', dk); c.beginPath(); c.moveTo(x - 20, y - 6); c.lineTo(x, y - h); c.lineTo(x + 20, y - 6); c.fill(); c.beginPath(); c.moveTo(x - 16, y - h * 0.45); c.lineTo(x, y - h * 1.1); c.lineTo(x + 16, y - h * 0.45); c.fill(); }
-  /* 夜裡森林的眼睛（今晚有狼） */
-  if (night > 0.6 && G.wolfHour >= 0 && !A.wolves.length) for (let i = 0; i < 2; i++) { const bl = Math.sin(t * 1.3 + i * 2) > 0.85 ? 0 : 1; if (bl) { E(c, L.forestX * 0.5 + i * 26, L.gTop + 40 + i * 10, 2, 1.4, '#ffd23a'); E(c, L.forestX * 0.5 + i * 26 + 7, L.gTop + 40 + i * 10, 2, 1.4, '#ffd23a'); } }
-  /* 圍籬 */
-  A.fence(c, L, dk);
-  /* 狗屋 */
-  const dhx = L.fenceX + (W - L.fenceX) * 0.12, dhy = L.gTop + 36;
-  box(c, dhx - 26, dhy - 30, 52, 32, mix('#c0704a', '#000', dk), 3); c.fillStyle = mix('#8a3a2a', '#000', dk); c.beginPath(); c.moveTo(dhx - 32, dhy - 28); c.lineTo(dhx, dhy - 52); c.lineTo(dhx + 32, dhy - 28); c.fill();
-  E(c, dhx, dhy - 6, 10, 12, mix('#2b1e18', '#000', dk));
-  /* 兔籠 */
-  const nh = Math.min(G.hutch, 6), hw = Math.min(86, (W - L.hutchX0 - 10) / Math.max(3, nh) - 6);
-  for (let i = 0; i < nh; i++) {
-    const x = L.hutchX0 + i * (hw + 6), y = L.gTop + 6 + (i % 2) * 4;
-    c.fillStyle = mix('#6a4a30', '#000', dk); c.fillRect(x + 4, y + 26, 4, 18); c.fillRect(x + hw - 8, y + 26, 4, 18);
-    box(c, x, y - 4, hw, 32, mix('#d8a868', '#000', dk), 3, 'rgba(60,40,20,.4)');
-    c.strokeStyle = mix('#8a6a4a', '#000', dk); c.lineWidth = 1; for (let k = 6; k < hw - 4; k += 6) { c.beginPath(); c.moveTo(x + k, y); c.lineTo(x + k, y + 24); c.stroke(); }
-    c.fillStyle = mix('#a8522e', '#000', dk); c.beginPath(); c.moveTo(x - 4, y - 2); c.lineTo(x + hw / 2, y - 18); c.lineTo(x + hw + 4, y - 2); c.fill();
-    if (night > 0.6) { E(c, x + hw * 0.35, y + 12, 1.6, 1.6, '#f6c'); E(c, x + hw * 0.65, y + 14, 1.6, 1.6, '#f6c'); }
-  }
-  if (G.hutch > 6) { c.font = '700 12px sans-serif'; c.fillStyle = '#fff'; c.fillText(`+${G.hutch - 6} 座`, L.hutchX0 + 6 * (hw + 6) - 30, L.gTop - 14); }
-  /* 飼料槽 */
-  const tx = L.hutchX0 - 54, ty = L.gTop + 30;
-  box(c, tx, ty, 44, 14, mix('#8a6a46', '#000', dk), 3);
-  const hayLv = U.clamp(G.hay / Math.max(1, F.dailyNeed().hay * 3), 0, 1);
-  if (hayLv > 0) { c.fillStyle = mix('#e2c45a', '#000', dk); c.fillRect(tx + 3, ty + 2 + (1 - hayLv) * 8, 38, 10 - (1 - hayLv) * 8); }
-  if (G.hayShort) { c.font = '14px sans-serif'; c.fillText('❗', tx + 14, ty - 4); }
-  /* 防鳥網 */
-  if (G.net) { c.strokeStyle = `rgba(255,255,255,${0.25 - dk * 0.1})`; c.lineWidth = 1; for (let x = L.fenceX; x < W; x += 18) { c.beginPath(); c.moveTo(x, L.gTop - 30); c.lineTo(x + 30, L.gTop + 20); c.stroke(); } }
-
-  /* 動物：依 y 排序繪製 */
-  const items = [];
-  A.syncSprites(L, t, night);
-  const shown = G.rabbits.slice(0, 80);
-  for (const r of shown) { const sp = A.sprites.get(r.id); if (sp) items.push({ y: LY(L, sp.y), f: () => A.rabbit(c, LX(L, sp.x), LY(L, sp.y), (r.age < F.ADULT ? 0.55 + r.age * 0.05 : 1) * A.scale(H), F.COLORS[r.col], sp.face, t + r.id, sp.hop > 0, { sleep: night > 0.7 && !sp.hop, sick: r.sick, preg: r.preg }) }); }
-  G.dogs.forEach((d, i) => { const sp = A.sprites.get('d' + d.id); if (sp) items.push({ y: LY(L, sp.y), f: () => A.dog(c, LX(L, sp.x), LY(L, sp.y), 0.95 * A.scale(H), sp.face, t + i, sp.run, { night: night > 0.6, hurt: d.hp < 50, col: ['#b07840', '#3a3330', '#d8b070', '#8a6a50', '#f0e6d8', '#6a4a30'][i % 6] }) }); });
-  for (const w of A.wolves) items.push({ y: w.y, f: () => A.wolf(c, w.x, w.y, A.scale(H), w.face, t + w.ph, w.state !== 'fight', night > 0.5) });
-  items.sort((a, b) => a.y - b.y).forEach(i => i.f());
-  if (G.rabbits.length > shown.length) { c.font = '700 13px "Huninn",sans-serif'; c.fillStyle = 'rgba(255,255,255,.9)'; c.fillText(`＋${G.rabbits.length - shown.length} 隻在兔籠裡`, L.hutchX0, L.gTop - 26); }
-  /* 特效 */
-  A.drawFx(c, t, L);
-  A.drawEagle(c, t, L);
-  /* 夜色 */
-  if (night > 0.02) { c.fillStyle = `rgba(8,14,38,${night * 0.42})`; c.fillRect(0, 0, W, H); }
-  /* 天氣 */
-  if (G.weather === '雨' || G.weather === '颱風') { c.strokeStyle = 'rgba(200,215,255,0.45)'; c.lineWidth = 1.2; c.beginPath(); const n = G.weather === '颱風' ? 120 : 70, sl = G.weather === '颱風' ? 10 : 3; for (let i = 0; i < n; i++) { const x = (i * 53.7 + t * (G.weather === '颱風' ? 400 : 120)) % (W + 40) - 20, y = (i * 97.1 + t * 520) % H; c.moveTo(x, y); c.lineTo(x - sl, y + 14); } c.stroke(); c.fillStyle = 'rgba(60,70,90,0.12)'; c.fillRect(0, 0, W, H); }
-  if (G.weather === '寒流' || (season === 3 && G.weather === '陰')) { c.fillStyle = 'rgba(255,255,255,0.85)'; for (let i = 0; i < 50; i++) { const x = (i * 71.3 + Math.sin(t + i) * 20 + t * 15) % W, y = (i * 43.9 + t * 40) % H; c.fillRect(x, y, 2.2, 2.2); } }
-};
-A.scale = H => U.clamp(H / 520, 0.75, 1.5);
-A.fence = function (c, L, dk) {
-  const lv = G.fence, x = L.fenceX;
-  if (!lv) { c.strokeStyle = mix('#8a6a4a', '#000', dk); c.setLineDash([4, 6]); c.beginPath(); c.moveTo(x, L.gTop); c.lineTo(x - 12, L.H); c.stroke(); c.setLineDash([]); return; }
-  const col = lv === 1 ? '#a8784a' : lv === 2 ? '#8a9098' : '#6a7078';
-  for (let i = 0; i < 9; i++) { const f = i / 8, px = x - f * 14, py = L.gTop + f * (L.H - L.gTop); c.fillStyle = mix(col, '#000', dk); c.fillRect(px - 3, py - 30, 6, 34); }
-  c.strokeStyle = mix(col, '#000', dk); c.lineWidth = lv === 1 ? 4 : 1.5;
-  for (const k of [-24, -12]) { c.beginPath(); c.moveTo(x, L.gTop + k); c.lineTo(x - 14, L.H + k); c.stroke(); }
-  if (lv >= 2) { c.lineWidth = 0.8; for (let i = 0; i < 30; i++) { const f = i / 30, py = L.gTop + f * (L.H - L.gTop); c.beginPath(); c.moveTo(x - f * 14 - 3, py - 28); c.lineTo(x - f * 14 + 3, py + 2); c.stroke(); } }
-  if (lv === 3) { const on = Math.sin(performance.now() / 120) > 0.6; c.strokeStyle = on ? 'rgba(255,240,120,.9)' : 'rgba(255,240,120,.35)'; c.lineWidth = 1.5; c.beginPath(); c.moveTo(x, L.gTop - 30); c.lineTo(x - 14, L.H - 30); c.stroke(); box(c, x + 4, L.gTop + 10, 16, 12, '#f2d23a', 2); }
-};
-
-/* 精靈：每隻動物的畫面位置與移動 */
-A.syncSprites = function (L, t, night) {
-  const live = new Set();
-  const dt = Math.min(0.05, t - (A.lastT || t)); A.lastT = t;
-  const spd = (G.speed || 1) > 0 ? 1 : 0;
-  for (const r of G.rabbits.slice(0, 80)) {
-    live.add(r.id);
-    let sp = A.sprites.get(r.id);
-    if (!sp) { sp = { x: 0.55 + Math.random() * 0.4, y: Math.random(), tx: 0, ty: 0, wait: Math.random() * 3, hop: 0, face: Math.random() < 0.5 ? 1 : -1 }; sp.tx = sp.x; sp.ty = sp.y; A.sprites.set(r.id, sp); }
-    sp.wait -= dt * spd;
-    if (sp.wait <= 0) {
-      if (night > 0.7) { sp.tx = 0.62 + Math.random() * 0.34; sp.ty = Math.random() * 0.25; }       /* 晚上回兔籠附近 */
-      else { sp.tx = U.clamp(sp.x + U.rand(-0.18, 0.18), 0.06, 0.98); sp.ty = U.clamp(sp.y + U.rand(-0.25, 0.25), 0, 1); }
-      sp.wait = U.rand(1.5, 5); sp.hop = 1;
+/* ---------- 繪製 ---------- */
+G3.view = { VP: null, cam: [0, 0, 0], env: null };
+G3.render = function (root, cam, env, W, H, quality) {
+  const gl = G3.gl, u = G3.u;
+  gl.viewport(0, 0, W, H);
+  gl.clearColor(env.fog[0], env.fog[1], env.fog[2], 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  const P = M4.persp(cam.fov, W / H, 0.3, 400), V = M4.look(cam.eye, cam.tgt, [0, 1, 0]), VP = M4.mul(P, V);
+  G3.view.VP = VP; G3.view.cam = cam.eye; G3.view.W = W; G3.view.H = H;
+  gl.uniformMatrix4fv(u.VP, false, VP);
+  gl.uniform3fv(u.sunD, env.sunD); gl.uniform3fv(u.sunC, env.sunC); gl.uniform3fv(u.skyC, env.sky); gl.uniform3fv(u.gndC, env.gnd); gl.uniform3fv(u.fogC, env.fog); gl.uniform3fv(u.cam, cam.eye);
+  gl.uniform3fv(u.pl0, env.pl0); gl.uniform3fv(u.pc0, env.pc0); gl.uniform3fv(u.pl1, env.pl1); gl.uniform3fv(u.pc1, env.pc1);
+  gl.uniform1f(u.fogN, env.fogN); gl.uniform1f(u.fogF, env.fogF);
+  const trans = [];
+  const I = M4.id();
+  const walk = (nd, PW) => {
+    if (!nd.visible) return;
+    M4.trs(nd.pos, nd.rot, nd.scl, nd.L); M4.mul(PW, nd.L, nd.W);
+    if (nd.mesh) { if (nd.alpha < 1) trans.push(nd); else draw(nd); }
+    for (const k of nd.kids) walk(k, nd.W);
+  };
+  let curMesh = null;
+  const bind = m => {
+    if (curMesh === m) return; curMesh = m;
+    gl.bindBuffer(gl.ARRAY_BUFFER, m.pb); gl.enableVertexAttribArray(G3.a.p); gl.vertexAttribPointer(G3.a.p, 3, gl.FLOAT, false, 0, 0);
+    gl.bindBuffer(gl.ARRAY_BUFFER, m.nb); gl.enableVertexAttribArray(G3.a.n); gl.vertexAttribPointer(G3.a.n, 3, gl.FLOAT, false, 0, 0);
+    if (m.cb && G3.a.c >= 0) { gl.bindBuffer(gl.ARRAY_BUFFER, m.cb); gl.enableVertexAttribArray(G3.a.c); gl.vertexAttribPointer(G3.a.c, 3, gl.FLOAT, false, 0, 0); }
+    else if (G3.a.c >= 0) { gl.disableVertexAttribArray(G3.a.c); gl.vertexAttrib3f(G3.a.c, 1, 1, 1); }
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, m.ib);
+  };
+  const draw = nd => {
+    const m = nd.mesh; bind(m);
+    gl.uniformMatrix4fv(u.M, false, nd.W); gl.uniformMatrix3fv(u.NM, false, M4.nrm(nd.W));
+    gl.uniform3fv(u.col, nd.col); gl.uniform3fv(u.emis, nd.emis); gl.uniform1f(u.spec, nd.spec); gl.uniform1f(u.rim, nd.rim); gl.uniform1f(u.alpha, nd.alpha);
+    gl.uniform1f(u.useVC, nd.vc ? 1 : 0); gl.uniform3fv(u.tint, nd.tint || [1, 1, 1]); gl.uniform1f(u.flash, nd.flash || 0);
+    if (nd.noCull) gl.disable(gl.CULL_FACE);
+    gl.uniform1f(u.sh, 0); gl.uniform1f(u.shL, 0);
+    gl.drawElements(gl.TRIANGLES, m.cnt, m.it, 0);
+    if (nd.fur && quality > 0) {
+      const n = quality > 1 ? nd.fur.n : Math.ceil(nd.fur.n / 2);
+      gl.uniform1f(u.furD, nd.fur.den);
+      for (let i = 1; i <= n; i++) { gl.uniform1f(u.sh, nd.fur.len * i / n); gl.uniform1f(u.shL, 0.12 + 0.8 * i / (n + 1)); gl.drawElements(gl.TRIANGLES, m.cnt, m.it, 0); }
     }
-    if (sp.hop) {
-      const dx = sp.tx - sp.x, dy = sp.ty - sp.y, d = Math.hypot(dx, dy), v = 0.09 * dt;
-      if (d < v) { sp.x = sp.tx; sp.y = sp.ty; sp.hop = 0; } else { sp.x += dx / d * v; sp.y += dy / d * v; sp.face = dx >= 0 ? 1 : -1; }
-    }
+    if (nd.noCull) gl.enable(gl.CULL_FACE);
+  };
+  walk(root, I);
+  if (trans.length) {
+    gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.depthMask(false);
+    for (const nd of trans) draw(nd);
+    gl.depthMask(true); gl.disable(gl.BLEND);
   }
-  G.dogs.forEach((d, i) => {
-    const k = 'd' + d.id; live.add(k);
-    let sp = A.sprites.get(k);
-    if (!sp) { sp = { x: 0.05 + i * 0.06, y: 0.3 + (i % 3) * 0.25, tx: 0, ty: 0, wait: 0, face: 1, run: 0 }; A.sprites.set(k, sp); }
-    sp.wait -= dt * spd;
-    if (sp.wait <= 0) { sp.tx = U.clamp((night > 0.6 ? 0.02 : 0.05) + Math.random() * (night > 0.6 ? 0.18 : 0.5), 0, 0.9); sp.ty = Math.random(); sp.wait = U.rand(2, 6); }
-    const dx = sp.tx - sp.x, dy = sp.ty - sp.y, dd = Math.hypot(dx, dy), v = 0.12 * dt;
-    sp.run = dd > 0.01; if (sp.run) { const m = Math.min(v, dd); sp.x += dx / dd * m; sp.y += dy / dd * m; sp.face = dx >= 0 ? 1 : -1; }
-  });
-  for (const k of A.sprites.keys()) if (!live.has(k)) A.sprites.delete(k);
 };
-
-/* ---------- 夜襲動畫 ---------- */
-A.raid = function (info, W, H) {
-  const L = A.layout(W, H);
-  for (let i = 0; i < info.wolves; i++) A.wolves.push({ x: -40 - i * 50, y: L.gTop + 30 + i * 22, face: 1, ph: i, state: 'in', life: 0, tx: L.fenceX + 10 + Math.random() * 60, flee: i < info.wolves - (info.stolen ? Math.ceil(info.stolen / 1.5) : 0) || info.dogs > 0 });
-  A.fx.push({ k: 'banner', m: info.repelled ? '🐺 野狼來襲！看門狗擊退了狼群！' : `🐺 野狼來襲！被叼走 ${info.stolen} 隻兔子`, good: info.repelled, life: 0, dur: 4 });
-};
-A.drawFx = function (c, t, L) {
-  const now = performance.now(), dt = Math.min(0.1, (now - (A.fxT || now)) / 1000); A.fxT = now;
-  /* 狼的移動 */
-  for (const w of A.wolves) {
-    w.life += dt;
-    if (w.state === 'in') { w.x += 220 * dt; if (w.x >= w.tx) { w.state = 'fight'; w.fightT = 1.4; } }
-    else if (w.state === 'fight') { w.fightT -= dt; if (w.fightT <= 0) { w.state = 'out'; w.face = -1; } A.fx.push({ k: 'dust', x: w.x + U.rand(-20, 40), y: w.y - U.rand(5, 30), life: 0, dur: 0.4 }); }
-    else { w.x -= 260 * dt; }
-  }
-  A.wolves = A.wolves.filter(w => w.x > -80 || w.state !== 'out');
-  for (const f of A.fx) {
-    f.life += dt;
-    const a = 1 - f.life / f.dur;
-    if (f.k === 'dust') { E(c, f.x, f.y, 6 + f.life * 30, 4 + f.life * 20, `rgba(230,220,200,${a * 0.6})`); if (Math.random() < 0.05) { c.font = '14px sans-serif'; c.fillText(U.pick(['💥', '💢']), f.x, f.y); } }
-    else if (f.k === 'banner') { const y = L.gTop + 34; c.globalAlpha = Math.min(1, a * 3); box(c, L.W / 2 - 170, y - 22, 340, 40, f.good ? 'rgba(60,120,60,.92)' : 'rgba(160,40,30,.92)', 14); c.font = '700 16px "Huninn","Noto Sans TC",sans-serif'; c.textAlign = 'center'; c.fillStyle = '#fff'; c.fillText(f.m, L.W / 2, y + 4); c.textAlign = 'left'; c.globalAlpha = 1; }
-    else if (f.k === 'money') { c.globalAlpha = Math.max(0, a); c.font = '700 20px "Huninn",sans-serif'; c.fillStyle = '#ffd23a'; c.strokeStyle = 'rgba(0,0,0,.5)'; c.lineWidth = 3; c.textAlign = 'center'; const y = f.y - f.life * 40; c.strokeText(f.m, f.x, y); c.fillText(f.m, f.x, y); c.textAlign = 'left'; c.globalAlpha = 1; }
-    else if (f.k === 'heart') { c.globalAlpha = Math.max(0, a); c.font = '16px sans-serif'; c.fillText('💗', f.x, f.y - f.life * 30); c.globalAlpha = 1; }
-  }
-  A.fx = A.fx.filter(f => f.life < f.dur);
-};
-A.eagleSwoop = function (W, H) { const L = A.layout(W, H); A.eagle = { x: -60, y: 30, t: 0, ty: L.gTop + 40 }; };
-A.drawEagle = function (c, t, L) {
-  const e = A.eagle; if (!e) return;
-  const now = performance.now(), dt = Math.min(0.1, (now - (A.eT || now)) / 1000); A.eT = now; e.t += dt; e.x += 360 * dt; e.y = e.t < 1 ? 30 + (e.ty - 30) * Math.sin(e.t * Math.PI / 2) : e.ty - (e.t - 1) * 160;
-  c.save(); c.translate(e.x, e.y); const fl = Math.sin(t * 12) * 0.5;
-  c.fillStyle = '#5a3e28'; c.beginPath(); c.moveTo(0, 0); c.lineTo(-30, -10 - fl * 14); c.lineTo(-8, 4); c.fill(); c.beginPath(); c.moveTo(0, 0); c.lineTo(30, -10 - fl * 14); c.lineTo(8, 4); c.fill();
-  E(c, 0, 2, 9, 6, '#6a4a30'); E(c, 7, -2, 5, 4, '#f2f2ee'); c.fillStyle = '#e9b43a'; c.fillRect(11, -2, 5, 2.5);
-  if (e.t > 1) A.rabbit(c, 0, 18, 0.5, '#efe4d0', 1, t, false, {});
-  c.restore();
-  if (e.x > L.W + 80) A.eagle = null;
-};
-A.moneyFx = function (x, y, m) { A.fx.push({ k: 'money', x, y, m, life: 0, dur: 1.6 }); };
-A.hearts = function (W, H, n) { const L = A.layout(W, H); for (let i = 0; i < Math.min(8, n); i++) A.fx.push({ k: 'heart', x: L.hutchX0 + Math.random() * (W - L.hutchX0), y: L.gTop + Math.random() * 40, life: -i * 0.15, dur: 1.8 }); };
+/* 世界座標 → 螢幕 */
+G3.project = function (p) { const v = M4.apply(G3.view.VP, p); if (v[3] <= 0) return null; return [(v[0] * 0.5 + 0.5) * G3.view.W, (1 - (v[1] * 0.5 + 0.5)) * G3.view.H, v[2]]; };
+G3.wpos = nd => [nd.W[12], nd.W[13], nd.W[14]];
 })();
 
 </script>
 <script>
-/* 介面：標題、主迴圈、頂部狀態、底部面板（工作答題、農場、商店、筆記、錯題本、成就）、模擬考、事件提示、存檔 */
+/* 3D 模型：兔子（毛色花紋、品種、表情、動作骨架）、柴犬看門狗、野狼、S 級狼人、兔籠、狗屋、擺設、樹木花草 */
+(function () {
+'use strict';
+const { n, grp, hex } = G3;
+const MD = window.MD = {};
+const FUR = (len, den, k) => ({ n: k || 5, len, den });
+const SHADOW = o => n('disc', Object.assign({ col: '#000000', alpha: 0.22, pos: [0, 0.012, 0], rim: 0 }, o));
+
+/* ---------- 兔子 ---------- */
+MD.COATS = {
+  white: '#f7f3ec', cream: '#efdcbc', fawn: '#d9b48a', brown: '#b7865c', chestnut: '#8d5c3c', gray: '#a4a19c', blue: '#808a98', black: '#3b3532', orange: '#de9758', gold: '#e8bf6e', choco: '#6b4632', lilac: '#b9a8b8',
+};
+MD.PATS = { solid: '純色', dutch: '荷蘭斑', spot: '白底花斑', himalayan: '喜馬拉雅', agouti: '野兔色' };
+MD.BREEDS = { std: '一般兔', lop: '垂耳兔', dwarf: '侏儒兔', lion: '獅子兔' };
+const mixc = (a, b, f) => { const A = hex(a), B = hex(b); return [A[0] + (B[0] - A[0]) * f, A[1] + (B[1] - A[1]) * f, A[2] + (B[2] - A[2]) * f]; };
+MD.rabbit = function (coat, kit) {
+  const c1 = MD.COATS[coat.c1] || MD.COATS.brown, c2 = MD.COATS[coat.c2] || MD.COATS.white;
+  const pat = coat.pat || 'solid', br = coat.br || 'std';
+  const white = '#f8f5ef', pink = '#f4a6b4', dark = mixc(c1, '#201810', 0.35);
+  /* 各部位顏色 */
+  let body = c1, belly = mixc(c1, '#ffffff', 0.45), headC = c1, muzzle = mixc(c1, '#ffffff', 0.55), earC = c1, tail = '#ffffff', feet = mixc(c1, '#ffffff', 0.3);
+  if (pat === 'dutch') { belly = white; muzzle = white; feet = white; }
+  if (pat === 'spot') { body = white; belly = white; headC = white; muzzle = white; feet = white; }
+  if (pat === 'himalayan') { body = white; belly = white; headC = white; muzzle = white; earC = MD.COATS.black; feet = MD.COATS.black; tail = MD.COATS.black; }
+  if (pat === 'agouti') { belly = mixc(c1, '#ffffff', 0.6); muzzle = mixc(c1, '#ffffff', 0.4); tail = '#f4efe6'; }
+  const fur = (len, den) => FUR(len * 1.1, (den || 46) * 2.6, 5);
+  const root = grp({ name: 'rabbit' });
+  const sh = SHADOW({ scl: [0.27, 1, 0.34] });
+  const bodyG = grp();                         /* 會跳的身體 */
+  const torso = grp();                         /* 會壓扁伸展 */
+  const mk = (geo, p, s, col, o) => n(geo, Object.assign({ pos: p, scl: s, col, rim: 0.45 }, o || {}));
+  const B = mk('sphere', [0, 0.2, -0.03], [0.21, 0.19, 0.27], body, { fur: fur(0.09) });
+  const hL = mk('sphere', [-0.1, 0.17, -0.1], [0.13, 0.14, 0.15], body, { fur: fur(0.1) });
+  const hR = mk('sphere', [0.1, 0.17, -0.1], [0.13, 0.14, 0.15], body, { fur: fur(0.1) });
+  const chest = mk('sphere', [0, 0.19, 0.11], [0.15, 0.16, 0.14], belly, { fur: fur(0.1) });
+  const tl = mk('sphere', [0, 0.25, -0.29], [0.06, 0.06, 0.055], tail, { fur: fur(0.25, 30) });
+  const bfL = mk('sphere', [-0.1, 0.03, -0.03], [0.045, 0.035, 0.11], feet), bfR = mk('sphere', [0.1, 0.03, -0.03], [0.045, 0.035, 0.11], feet);
+  const fpL = mk('sphere', [-0.06, 0.04, 0.17], [0.042, 0.04, 0.062], feet), fpR = mk('sphere', [0.06, 0.04, 0.17], [0.042, 0.04, 0.062], feet);
+  torso.add(B, hL, hR, chest, tl, bfL, bfR, fpL, fpR);
+  if (pat === 'spot') for (const [x, y, z, s] of [[-0.12, 0.27, -0.06, 0.07], [0.13, 0.24, -0.12, 0.08], [0.02, 0.36, -0.08, 0.06]]) torso.add(mk('sphere', [x, y, z], [s, s * 0.6, s], c1));
+  if (pat === 'dutch') torso.add(mk('sphere', [0, 0.23, -0.1], [0.215, 0.185, 0.2], body, { fur: fur(0.09) }));
+  /* 頭 */
+  const big = br === 'dwarf' ? 1.15 : 1;
+  const headG = grp({ pos: [0, 0.36, 0.16], scl: [big, big, big] });
+  const H = mk('sphere', [0, 0, 0.01], [0.17, 0.155, 0.16], headC, { fur: fur(0.08) });
+  const chL = mk('sphere', [-0.075, -0.04, 0.075], [0.085, 0.075, 0.075], headC, { fur: fur(0.1) }), chR = mk('sphere', [0.075, -0.04, 0.075], [0.085, 0.075, 0.075], headC, { fur: fur(0.1) });
+  const mz = mk('sphere', [0, -0.045, 0.125], [0.07, 0.052, 0.05], muzzle, { fur: fur(0.12) });
+  const nose = mk('sphere', [0, -0.022, 0.185], [0.022, 0.015, 0.014], pink, { spec: 30, rim: 0.1 });
+  const mouth = mk('sphere', [0, -0.065, 0.175], [0.014, 0.006, 0.006], '#7a4a4a', { rim: 0 });
+  headG.add(H, chL, chR, mz, nose, mouth);
+  if (pat === 'dutch') headG.add(mk('sphere', [0, 0.02, 0.13], [0.035, 0.09, 0.03], white));
+  if (pat === 'spot') { headG.add(mk('sphere', [-0.09, 0.02, 0.11], [0.05, 0.045, 0.03], c1), mk('sphere', [0.09, 0.02, 0.11], [0.05, 0.045, 0.03], c1)); }
+  if (pat === 'himalayan') headG.add(mk('sphere', [0, -0.035, 0.13], [0.05, 0.04, 0.04], MD.COATS.black, { fur: fur(0.1) }));
+  /* 眼睛：大而閃亮 */
+  const eyes = [];
+  for (const sx of [-1, 1]) {
+    const eG = grp({ pos: [sx * 0.088, 0.02, 0.132] });
+    const ball = mk('sphere', [0, 0, 0], [0.046, 0.05, 0.034], '#140e0c', { spec: 90, rim: 0.2 });
+    const hi = mk('sphere', [sx * -0.01, 0.018, 0.029], [0.014, 0.014, 0.008], '#ffffff', { emis: [0.9, 0.9, 0.9], rim: 0 });
+    const hi2 = mk('sphere', [sx * 0.013, -0.014, 0.03], [0.006, 0.006, 0.004], '#ffffff', { emis: [0.6, 0.6, 0.6], rim: 0 });
+    const lid = mk('sphere', [0, 0.004, 0.004], [0.05, 0.053, 0.037], headC, {});
+    lid.visible = false;
+    eG.add(ball, hi, hi2, lid); headG.add(eG); eyes.push({ g: eG, lid, ball });
+  }
+  /* 耳朵 */
+  const ears = [];
+  const earLen = br === 'dwarf' ? 0.7 : br === 'lop' ? 1.05 : 1;
+  for (const sx of [-1, 1]) {
+    const eG = grp({ pos: [sx * 0.055, 0.11, -0.02] });
+    const outer = mk('sphere', [0, 0.13 * earLen, 0], [0.048, 0.15 * earLen, 0.024], earC, { fur: fur(0.12) });
+    const inner = mk('sphere', [0, 0.13 * earLen, 0.014], [0.03, 0.12 * earLen, 0.012], pink, { rim: 0.3 });
+    eG.add(outer, inner); headG.add(eG);
+    ears.push({ g: eG, sx, base: br === 'lop' ? [0.15, 0, sx * -2.55] : [-0.18, 0, sx * -0.14] });
+  }
+  if (br === 'lion') for (let i = 0; i < 9; i++) { const a = i / 9 * Math.PI * 2; headG.add(mk('sphere', [Math.cos(a) * 0.15, Math.sin(a) * 0.13 - 0.02, -0.04], [0.08, 0.08, 0.07], mixc(headC === white ? c1 : headC, '#ffffff', 0.2), { fur: fur(0.25, 26) })); }
+  torso.add(headG); bodyG.add(torso); root.add(sh, bodyG);
+  const k = kit ? 0.58 : 1;
+  root.scl = [k, k, k];
+  return { root, bodyG, torso, headG, eyes, ears, nose, tail: tl, feet: [fpL, fpR, bfL, bfR], shadow: sh };
+};
+
+/* ---------- 看門狗（柴犬風） ---------- */
+MD.DOGCOL = [['#c8834a', '#f4e4c8'], ['#3a3230', '#c99a62'], ['#f1ebe0', '#ffffff'], ['#d9a85a', '#f6e8cc'], ['#8a6a50', '#e8d8c0'], ['#b8b2aa', '#f4f1ea']];
+MD.dog = function (ci) {
+  const [c1, c2] = MD.DOGCOL[ci % MD.DOGCOL.length];
+  const fur = FUR(0.07, 100, 4);
+  const mk = (geo, p, s, col, o) => n(geo, Object.assign({ pos: p, scl: s, col, rim: 0.35 }, o || {}));
+  const root = grp(), sh = SHADOW({ scl: [0.36, 1, 0.55] }), bodyG = grp();
+  const B = mk('sphere', [0, 0.44, 0], [0.2, 0.2, 0.36], c1, { fur });
+  const belly = mk('sphere', [0, 0.38, 0.12], [0.16, 0.16, 0.2], c2, { fur });
+  const legs = [];
+  for (const [x, z] of [[-0.11, 0.22], [0.11, 0.22], [-0.11, -0.22], [0.11, -0.22]]) { const lg = grp({ pos: [x, 0.36, z] }); lg.add(mk('cyl', [0, -0.16, 0], [0.05, 0.34, 0.05], c1), mk('sphere', [0, -0.33, 0.02], [0.055, 0.04, 0.07], c2)); legs.push(lg); bodyG.add(lg); }
+  const headG = grp({ pos: [0, 0.64, 0.36] });
+  headG.add(mk('sphere', [0, 0, 0], [0.16, 0.15, 0.155], c1, { fur }), mk('sphere', [0, -0.04, 0.12], [0.085, 0.07, 0.1], c2, { fur }), mk('sphere', [0, -0.01, 0.215], [0.03, 0.024, 0.02], '#1a1412', { spec: 40 }),
+    mk('sphere', [-0.08, -0.05, 0.08], [0.06, 0.055, 0.05], c2), mk('sphere', [0.08, -0.05, 0.08], [0.06, 0.055, 0.05], c2));
+  const eyes = [];
+  for (const sx of [-1, 1]) { const e = mk('sphere', [sx * 0.07, 0.035, 0.125], [0.026, 0.028, 0.02], '#16100e', { spec: 70 }); e.add(mk('sphere', [sx * -0.2, 0.35, 0.8], [0.3, 0.3, 0.3], '#ffffff', { emis: [0.9, 0.9, 0.9] })); headG.add(e); eyes.push(e); }
+  for (const sx of [-1, 1]) headG.add(mk('cone6', [sx * 0.085, 0.15, -0.01], [0.055, 0.12, 0.035], c1, { rot: [-0.1, 0, sx * -0.25] }), mk('cone6', [sx * 0.085, 0.14, 0.004], [0.03, 0.08, 0.02], '#e8a0a0', { rot: [-0.1, 0, sx * -0.25] }));
+  const tongue = mk('sphere', [0, -0.09, 0.17], [0.03, 0.012, 0.04], '#e86a7a'); tongue.visible = false; headG.add(tongue);
+  const collar = mk('torus', [0, 0.56, 0.27], [0.13, 0.13, 0.13], '#c8402a', { rot: [1.2, 0, 0] });
+  const tagN = mk('sphere', [0, 0.47, 0.37], [0.025, 0.025, 0.01], '#f2c84a', { spec: 50 });
+  const tailG = grp({ pos: [0, 0.6, -0.32] });
+  tailG.add(mk('torus', [0, 0.05, 0], [0.08, 0.1, 0.08], c1, { rot: [0, 0, 1.57], fur }), mk('sphere', [0, 0.13, 0.02], [0.05, 0.05, 0.05], c2, { fur }));
+  bodyG.add(B, belly, headG, collar, tagN, tailG);
+  const bandage = mk('box', [0.0, 0.74, 0.36], [0.33, 0.03, 0.2], '#ffffff'); bandage.visible = false; bodyG.add(bandage);
+  root.add(sh, bodyG);
+  return { root, bodyG, headG, legs, tailG, tongue, eyes, bandage, body: [B, belly] };
+};
+
+/* ---------- 野狼 ---------- */
+MD.wolf = function () {
+  const c1 = '#6c6f76', c2 = '#c9c4b8', fur = FUR(0.09, 80, 4);
+  const mk = (geo, p, s, col, o) => n(geo, Object.assign({ pos: p, scl: s, col, rim: 0.3 }, o || {}));
+  const root = grp(), sh = SHADOW({ scl: [0.45, 1, 0.75] }), bodyG = grp();
+  const legs = [];
+  for (const [x, z] of [[-0.13, 0.3], [0.13, 0.3], [-0.13, -0.32], [0.13, -0.32]]) { const lg = grp({ pos: [x, 0.5, z] }); lg.add(mk('cyl', [0, -0.24, 0], [0.055, 0.48, 0.055], c1), mk('sphere', [0, -0.47, 0.03], [0.06, 0.04, 0.08], '#4a4c52')); legs.push(lg); bodyG.add(lg); }
+  bodyG.add(mk('sphere', [0, 0.62, 0], [0.24, 0.25, 0.5], c1, { fur }), mk('sphere', [0, 0.55, 0.18], [0.19, 0.2, 0.25], c2, { fur }), mk('sphere', [0, 0.74, 0.28], [0.22, 0.22, 0.2], c1, { fur }));
+  const headG = grp({ pos: [0, 0.86, 0.52] });
+  headG.add(mk('sphere', [0, 0, 0], [0.17, 0.16, 0.18], c1, { fur }), mk('sphere', [0, -0.05, 0.19], [0.085, 0.075, 0.16], c2, { fur }), mk('sphere', [0, -0.02, 0.34], [0.035, 0.028, 0.025], '#121010', { spec: 40 }));
+  for (const sx of [-1, 1]) headG.add(mk('cone6', [sx * 0.09, 0.17, -0.03], [0.06, 0.15, 0.04], c1, { rot: [-0.15, 0, sx * -0.2] }));
+  const eyes = [];
+  for (const sx of [-1, 1]) { const e = mk('sphere', [sx * 0.075, 0.04, 0.14], [0.026, 0.02, 0.018], '#f2c43a', { emis: [0.5, 0.35, 0.05], spec: 60 }); headG.add(e); eyes.push(e); }
+  const jaw = mk('sphere', [0, -0.1, 0.2], [0.07, 0.03, 0.12], c2); headG.add(jaw);
+  const tailG = grp({ pos: [0, 0.72, -0.48] }); tailG.add(mk('sphere', [0, -0.12, -0.18], [0.09, 0.09, 0.26], c1, { fur, rot: [0.7, 0, 0] }));
+  bodyG.add(headG, tailG); root.add(sh, bodyG);
+  return { root, bodyG, headG, legs, tailG, eyes, jaw };
+};
+/* ---------- S 級狼人 ---------- */
+MD.werewolf = function () {
+  const c1 = '#47403f', c2 = '#6e6462', fur = FUR(0.12, 60, 3);
+  const mk = (geo, p, s, col, o) => n(geo, Object.assign({ pos: p, scl: s, col, rim: 1.1, emis: [0.05, 0.02, 0.03] }, o || {}));
+  const root = grp(), sh = SHADOW({ scl: [0.9, 1, 0.8], alpha: 0.35 }), bodyG = grp();
+  const legs = [];
+  for (const sx of [-1, 1]) {
+    const hip = grp({ pos: [sx * 0.28, 1.15, 0] });
+    const knee = grp({ pos: [0, -0.5, 0.18] });
+    hip.add(mk('sphere', [0, -0.25, 0.08], [0.17, 0.32, 0.17], c1, { fur, rot: [-0.4, 0, 0] }), knee);
+    knee.add(mk('cyl', [0, -0.25, -0.08], [0.09, 0.52, 0.09], c1, { rot: [0.35, 0, 0] }), mk('sphere', [0, -0.55, 0.06], [0.13, 0.07, 0.22], '#1c1a1b'));
+    for (let i = -1; i <= 1; i++) knee.add(mk('cone6', [i * 0.06, -0.58, 0.26], [0.025, 0.09, 0.025], '#e8e2d0', { rot: [1.57, 0, 0] }));
+    legs.push(hip); bodyG.add(hip);
+  }
+  const torso = grp({ pos: [0, 1.75, 0.15], rot: [0.35, 0, 0] });
+  torso.add(mk('sphere', [0, 0, 0], [0.55, 0.62, 0.42], c1, { fur }), mk('sphere', [0, 0.05, 0.24], [0.4, 0.42, 0.25], c2, { fur }), mk('sphere', [0, 0.5, -0.05], [0.5, 0.32, 0.4], c1, { fur }));
+  const arms = [];
+  for (const sx of [-1, 1]) {
+    const sh2 = grp({ pos: [sx * 0.6, 0.35, 0.05] });
+    sh2.add(mk('sphere', [0, -0.35, 0.05], [0.15, 0.4, 0.15], c1, { fur }), mk('cyl', [0, -0.85, 0.12], [0.1, 0.5, 0.1], c1));
+    for (let i = -1; i <= 1; i++) sh2.add(mk('cone6', [i * 0.05, -1.17, 0.18], [0.025, 0.14, 0.025], '#efe8d6', { rot: [0.3, 0, 0] }));
+    arms.push(sh2); torso.add(sh2);
+  }
+  const headG = grp({ pos: [0, 0.85, 0.2] });
+  headG.add(mk('sphere', [0, 0, 0], [0.3, 0.28, 0.3], c1, { fur }), mk('sphere', [0, -0.08, 0.32], [0.14, 0.12, 0.26], c2, { fur }), mk('sphere', [0, -0.04, 0.57], [0.06, 0.045, 0.04], '#0a0808', { spec: 40 }));
+  for (const sx of [-1, 1]) { headG.add(mk('cone6', [sx * 0.16, 0.3, -0.05], [0.1, 0.26, 0.06], c1, { rot: [-0.2, 0, sx * -0.25] })); headG.add(mk('cone6', [sx * 0.05, -0.18, 0.45], [0.018, 0.07, 0.018], '#ffffff', { rot: [3.14, 0, 0] })); }
+  const eyes = [];
+  for (const sx of [-1, 1]) { const e = mk('sphere', [sx * 0.13, 0.06, 0.24], [0.045, 0.03, 0.03], '#ff3a2a', { emis: [1, 0.15, 0.05], rim: 0 }); headG.add(e); eyes.push(e); }
+  const aura = n('sphere', { pos: [0, 1.6, 0], scl: [1.4, 1.7, 1.2], col: '#8a1a2a', alpha: 0.12, emis: [0.4, 0, 0.05], rim: 0 });
+  torso.add(headG); bodyG.add(torso, aura); root.add(sh, bodyG);
+  return { root, bodyG, torso, headG, legs, arms, eyes, aura };
+};
+
+/* ---------- 兔籠 ---------- */
+MD.hutch = function () {
+  const wood = '#c99a64', dk = '#8a6440', roof = '#b05a36';
+  const mk = (geo, p, s, col, o) => n(geo, Object.assign({ pos: p, scl: s, col, rim: 0.15 }, o || {}));
+  const g = grp();
+  for (const [x, z] of [[-0.7, -0.5], [0.7, -0.5], [-0.7, 0.5], [0.7, 0.5]]) g.add(mk('box', [x, 0.2, z], [0.09, 0.4, 0.09], dk));
+  g.add(mk('box', [0, 0.85, 0], [1.6, 0.9, 1.2], wood), mk('box', [0, 0.42, 0], [1.7, 0.06, 1.3], dk));
+  g.add(mk('prism', [0, 1.3, 0], [1.95, 0.55, 1.45], roof));
+  /* 鐵網窗 */
+  g.add(mk('box', [-0.38, 0.88, 0.605], [0.7, 0.62, 0.02], '#3a3530', { alpha: 0.35 }));
+  for (let i = 0; i < 6; i++) g.add(mk('box', [-0.68 + i * 0.12, 0.88, 0.615], [0.015, 0.62, 0.015], '#8a8a8a'));
+  /* 門（可被狼破壞） */
+  const hinge = grp({ pos: [0.12, 0.6, 0.61] });
+  const door = mk('box', [0.3, 0.27, 0.02], [0.6, 0.56, 0.05], '#a8784a');
+  hinge.add(door, mk('sphere', [0.52, 0.28, 0.06], [0.03, 0.03, 0.03], '#e2c45a', { spec: 40 }));
+  g.add(hinge);
+  const dark = mk('box', [0.42, 0.88, 0.6], [0.56, 0.52, 0.01], '#2a1e16'); g.add(dark);
+  /* 斜坡 */
+  g.add(mk('box', [0.42, 0.25, 0.95], [0.5, 0.04, 0.75], wood, { rot: [0.62, 0, 0] }));
+  const warn = mk('sphere', [0.42, 1.75, 0.7], [0.12, 0.12, 0.12], '#e8402a', { emis: [0.6, 0.1, 0.05] }); warn.visible = false; g.add(warn);
+  g.add(SHADOW({ scl: [1.1, 1, 0.85], alpha: 0.25 }));
+  return { root: g, hinge, door, warn };
+};
+MD.doghouse = function () {
+  const g = grp(), mk = (geo, p, s, col, o) => n(geo, Object.assign({ pos: p, scl: s, col, rim: 0.15 }, o || {}));
+  g.add(mk('box', [0, 0.45, 0], [1.1, 0.9, 1.2], '#d8a870'), mk('prism', [0, 0.9, 0], [1.35, 0.55, 1.35], '#4a7a9a'), mk('sphere', [0, 0.38, 0.61], [0.28, 0.32, 0.02], '#2a1e16'), mk('box', [0, 0.02, 0.9], [0.5, 0.04, 0.4], '#c8402a'), SHADOW({ scl: [0.9, 1, 0.9], alpha: 0.25 }));
+  /* 狗碗與骨頭 */
+  g.add(mk('cyl', [0.8, 0.06, 0.7], [0.14, 0.1, 0.14], '#4a7a9a'), mk('cyl', [0.8, 0.1, 0.7], [0.11, 0.02, 0.11], '#a8784a'));
+  return { root: g };
+};
+MD.trough = function () {
+  const g = grp(), mk = (geo, p, s, col, o) => n(geo, Object.assign({ pos: p, scl: s, col, rim: 0.15 }, o || {}));
+  g.add(mk('box', [0, 0.12, 0], [1.2, 0.22, 0.45], '#9a7048'));
+  const hay = mk('box', [0, 0.2, 0], [1.1, 0.1, 0.36], '#e2c45a'); g.add(hay);
+  const pel = []; for (let i = 0; i < 8; i++) { const p = mk('sphere', [-0.4 + i * 0.11, 0.27, (i % 2) * 0.08 - 0.04], [0.04, 0.03, 0.04], '#b0784a'); pel.push(p); g.add(p); }
+  g.add(mk('cyl', [0.85, 0.07, 0], [0.18, 0.12, 0.18], '#5a9ac8'), mk('cyl', [0.85, 0.12, 0], [0.15, 0.02, 0.15], '#8ad0f0', { spec: 60 }), SHADOW({ scl: [0.8, 1, 0.4] }));
+  return { root: g, hay, pel };
+};
+
+/* ---------- 擺設 ---------- */
+MD.decor = function (type) {
+  const g = grp(), mk = (geo, p, s, col, o) => n(geo, Object.assign({ pos: p, scl: s, col, rim: 0.2 }, o || {}));
+  const anim = {};
+  switch (type) {
+    case 'house':
+      g.add(mk('box', [0, 0.32, 0], [0.9, 0.64, 0.8], '#e8c89a'), mk('prism', [0, 0.64, 0], [1.08, 0.42, 0.98], '#d06a4a'), mk('sphere', [0, 0.26, 0.405], [0.2, 0.24, 0.02], '#3a2a1e'), mk('box', [-0.26, 0.42, 0.405], [0.16, 0.14, 0.02], '#9ad0f0', { emis: [0.05, 0.08, 0.1] }), SHADOW({ scl: [0.7, 1, 0.65] }));
+      for (let i = 0; i < 4; i++) g.add(mk('sphere', [-0.35 + i * 0.23, 0.04, 0.5], [0.07, 0.05, 0.05], ['#f6a', '#fd5', '#fff', '#f86'][i]));
+      break;
+    case 'hay':
+      for (const [x, y, z, r] of [[0, 0.2, 0, 0], [0.45, 0.2, 0.1, 0.3], [0.2, 0.55, 0.05, 0.15]]) g.add(mk('box', [x, y, z], [0.6, 0.38, 0.42], '#e6c45c', { rot: [0, r, 0], fur: FUR(0.1, 70, 3) }));
+      g.add(SHADOW({ scl: [0.7, 1, 0.5] }));
+      break;
+    case 'carrot':
+      g.add(mk('box', [0, 0.15, 0], [1, 0.3, 0.5], '#b8714a'), mk('box', [0, 0.3, 0], [0.92, 0.04, 0.42], '#5a3a26'), SHADOW({ scl: [0.65, 1, 0.4] }));
+      for (let i = 0; i < 5; i++) { const x = -0.36 + i * 0.18; g.add(mk('cone', [x, 0.36, 0], [0.05, 0.16, 0.05], '#f08a2a', { rot: [3.14, 0, 0] })); for (let k = -1; k <= 1; k++) g.add(mk('cone6', [x + k * 0.025, 0.5, 0], [0.018, 0.16, 0.018], '#4aa83a', { rot: [0, 0, k * 0.3] })); }
+      break;
+    case 'tunnel': {
+      const t = mk('cyl', [0, 0.26, 0], [0.28, 1.4, 0.28], '#4aa0d8', { rot: [0, 0, 1.5708], noCull: true });
+      t.mesh = G3.mesh(stripCaps(G3.RAW.cyl)); g.add(t);
+      for (const x of [-0.7, 0.7]) g.add(mk('torus', [x, 0.26, 0], [0.28, 0.28, 0.28], '#f2c84a', { rot: [0, 0, 1.5708] }));
+      g.add(SHADOW({ scl: [0.85, 1, 0.35] }));
+      break;
+    }
+    case 'steps':
+      g.add(mk('box', [-0.3, 0.12, 0], [0.5, 0.24, 0.6], '#c99a64'), mk('box', [0.15, 0.25, 0], [0.5, 0.5, 0.6], '#b8895a'), mk('box', [0.15, 0.51, 0], [0.54, 0.04, 0.64], '#8ac84a', { fur: FUR(0.4, 60, 3) }), SHADOW({ scl: [0.6, 1, 0.45] }));
+      break;
+    case 'ball': {
+      const b = grp({ pos: [0, 0.17, 0] });
+      b.add(mk('sphere', [0, 0, 0], [0.17, 0.17, 0.17], '#e8503a', { spec: 30 }), mk('torus', [0, 0, 0], [0.165, 0.5, 0.165], '#ffffff', { rot: [1.57, 0, 0] }), mk('torus', [0, 0, 0], [0.165, 0.5, 0.165], '#f2c84a'));
+      g.add(b, SHADOW({ scl: [0.18, 1, 0.18] })); anim.ball = b;
+      break;
+    }
+    case 'flower':
+      g.add(mk('box', [0, 0.06, 0], [1.1, 0.12, 0.7], '#8a6a46'), mk('box', [0, 0.11, 0], [1.02, 0.03, 0.62], '#4a3a26'));
+      for (let i = 0; i < 14; i++) { const x = -0.42 + (i % 7) * 0.14, z = i < 7 ? -0.14 : 0.14, c = ['#ff8ab0', '#ffd84a', '#ffffff', '#c88aff', '#ff6a5a'][i % 5]; g.add(mk('cyl', [x, 0.2, z], [0.01, 0.18, 0.01], '#3a8a2a'), mk('sphere', [x, 0.3, z], [0.06, 0.035, 0.06], c), mk('sphere', [x, 0.31, z], [0.022, 0.02, 0.022], '#f2b02a')); }
+      g.add(SHADOW({ scl: [0.7, 1, 0.45] }));
+      break;
+    case 'pond':
+      g.add(mk('cyl', [0, 0.02, 0], [0.75, 0.04, 0.55], '#4a8ab8', { spec: 90, alpha: 0.85 }));
+      for (let i = 0; i < 12; i++) { const a = i / 12 * Math.PI * 2; g.add(mk('sphere', [Math.cos(a) * 0.78, 0.05, Math.sin(a) * 0.58], [0.12, 0.08, 0.1], '#a4a09a')); }
+      g.add(mk('cyl', [0.2, 0.05, 0.1], [0.14, 0.01, 0.14], '#4aa83a'), mk('sphere', [0.22, 0.08, 0.12], [0.05, 0.03, 0.05], '#ff9ac0'), mk('cyl', [-0.25, 0.05, -0.1], [0.11, 0.01, 0.11], '#5ab84a'));
+      break;
+    case 'mushroom':
+      for (const [x, z, s, c] of [[-0.25, 0, 1, '#e8402a'], [0.25, 0.1, 0.8, '#f2a02a'], [0.05, -0.25, 0.65, '#e8402a']]) { g.add(mk('cyl', [x, 0.15 * s, z], [0.1 * s, 0.3 * s, 0.1 * s], '#f4ecdc'), mk('sphere', [x, 0.3 * s, z], [0.24 * s, 0.13 * s, 0.24 * s], c, { spec: 20 })); for (let k = 0; k < 4; k++) { const a = k * 1.6; g.add(mk('sphere', [x + Math.cos(a) * 0.13 * s, 0.38 * s, z + Math.sin(a) * 0.13 * s], [0.035 * s, 0.02 * s, 0.035 * s], '#ffffff')); } }
+      g.add(SHADOW({ scl: [0.55, 1, 0.45] }));
+      break;
+    case 'pumpkin':
+      for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2; g.add(mk('sphere', [Math.cos(a) * 0.18, 0.36, Math.sin(a) * 0.18], [0.3, 0.36, 0.3], '#e8862a')); }
+      g.add(mk('cyl', [0, 0.78, 0], [0.05, 0.16, 0.05], '#4a6a2a'), mk('sphere', [0, 0.26, 0.44], [0.16, 0.2, 0.03], '#2a1a10'), mk('box', [-0.18, 0.5, 0.43], [0.08, 0.08, 0.02], '#ffd84a', { emis: [0.6, 0.45, 0.1] }), SHADOW({ scl: [0.6, 1, 0.6] }));
+      break;
+    case 'snowman':
+      g.add(mk('sphere', [0, 0.3, 0], [0.32, 0.3, 0.32], '#ffffff'), mk('sphere', [0, 0.72, 0], [0.22, 0.21, 0.22], '#ffffff'), mk('cone', [0, 0.72, 0.28], [0.04, 0.14, 0.04], '#f08a2a', { rot: [1.57, 0, 0] }), mk('sphere', [-0.08, 0.78, 0.19], [0.025, 0.025, 0.02], '#1a1a1a'), mk('sphere', [0.08, 0.78, 0.19], [0.025, 0.025, 0.02], '#1a1a1a'), mk('cyl', [0, 0.95, 0], [0.17, 0.08, 0.17], '#c8402a'), mk('torus', [0, 0.56, 0], [0.2, 0.3, 0.2], '#4a7ac8'), SHADOW({ scl: [0.35, 1, 0.35] }));
+      break;
+    case 'windmill': {
+      g.add(mk('frustum', [0, 0.6, 0], [0.3, 1.2, 0.3], '#f2e6d0'), mk('cone', [0, 1.35, 0], [0.32, 0.35, 0.32], '#b05a36'), mk('box', [0, 0.18, 0.27], [0.18, 0.3, 0.02], '#7a5a3a'), SHADOW({ scl: [0.35, 1, 0.35] }));
+      const bl = grp({ pos: [0, 1.15, 0.32] });
+      for (let i = 0; i < 4; i++) bl.add(mk('box', [0, 0.32, 0], [0.12, 0.6, 0.02], '#f4f0e6', { rot: [0, 0, 0] }), grp({ rot: [0, 0, 0] }));
+      bl.kids = []; for (let i = 0; i < 4; i++) { const arm = grp({ rot: [0, 0, i * Math.PI / 2] }); arm.add(mk('box', [0, 0.32, 0], [0.13, 0.58, 0.02], i % 2 ? '#f4f0e6' : '#e8a0a0')); bl.add(arm); }
+      g.add(bl); anim.blades = bl;
+      break;
+    }
+    case 'lantern':
+      g.add(mk('cyl', [0, 0.55, 0], [0.04, 1.1, 0.04], '#4a3a2a'), mk('box', [0, 1.12, 0], [0.22, 0.26, 0.22], '#ffd88a', { emis: [0.7, 0.5, 0.15], alpha: 0.95 }), mk('prism', [0, 1.25, 0], [0.3, 0.12, 0.3], '#3a2a1e'), SHADOW({ scl: [0.2, 1, 0.2] }));
+      anim.light = true;
+      break;
+    case 'picnic':
+      g.add(mk('box', [0, 0.015, 0], [1.2, 0.02, 0.9], '#e8584a'));
+      for (let i = 0; i < 6; i++) for (let k = 0; k < 4; k++) if ((i + k) % 2) g.add(mk('box', [-0.5 + i * 0.2, 0.027, -0.34 + k * 0.226], [0.2, 0.01, 0.226], '#ffffff'));
+      g.add(mk('box', [0.38, 0.1, 0.25], [0.26, 0.16, 0.18], '#c99a64'), mk('sphere', [0.36, 0.2, 0.25], [0.06, 0.05, 0.06], '#e8402a'));
+      break;
+    case 'swing':
+      g.add(mk('cyl', [-0.45, 0.45, 0], [0.04, 0.9, 0.04], '#8a6440'), mk('cyl', [0.45, 0.45, 0], [0.04, 0.9, 0.04], '#8a6440'), mk('cyl', [0, 0.9, 0], [0.04, 0.95, 0.04], '#8a6440', { rot: [0, 0, 1.5708] }));
+      { const sw = grp({ pos: [0, 0.9, 0] }); sw.add(mk('cyl', [-0.18, -0.3, 0], [0.008, 0.6, 0.008], '#e8e0d0'), mk('cyl', [0.18, -0.3, 0], [0.008, 0.6, 0.008], '#e8e0d0'), mk('box', [0, -0.6, 0], [0.45, 0.04, 0.25], '#c99a64')); g.add(sw); anim.swing = sw; }
+      g.add(SHADOW({ scl: [0.5, 1, 0.3] }));
+      break;
+    case 'cake':
+      g.add(mk('cyl', [0, 0.12, 0], [0.3, 0.24, 0.3], '#fff0e0'), mk('cyl', [0, 0.25, 0], [0.31, 0.04, 0.31], '#ff8ab0'), mk('cone', [0, 0.36, 0], [0.06, 0.18, 0.06], '#f08a2a', { rot: [3.14, 0, 0] }), mk('cone6', [0, 0.5, 0], [0.03, 0.12, 0.03], '#4aa83a'), SHADOW({ scl: [0.3, 1, 0.3] }));
+      break;
+  }
+  return { root: g, anim };
+};
+function stripCaps(raw) { const seg = 16, sideIdx = seg * 6; return { p: raw.p, n: raw.n, ix: raw.ix.slice(0, sideIdx) }; }
+
+/* ---------- 靜態場景：草地、圍籬、森林、山、花 ---------- */
+MD.scenery = function (season, pen) {
+  const B = new G3.Builder(), M = G3.M4, R = G3.RAW;
+  const rnd = (() => { let s = 12345; return () => (s = (s * 16807) % 2147483647) / 2147483647; })();
+  const T = (p, r, s) => M.trs(p, r || [0, 0, 0], s || [1, 1, 1]);
+  const C = h => hex(h);
+  /* 地面 */
+  const grass = { p: [], n: [], ix: [] }, N = 60, S = 90;
+  for (let i = 0; i <= N; i++) for (let k = 0; k <= N; k++) { const x = (k / N - 0.5) * S, z = (i / N - 0.5) * S; const d = Math.hypot(x, z); const y = d > 26 ? (d - 26) * 0.35 * (0.6 + 0.4 * Math.sin(x * 0.3) * Math.cos(z * 0.25)) : 0; grass.p.push(x, y, z); grass.n.push(0, 1, 0); }
+  for (let i = 0; i < N; i++) for (let k = 0; k < N; k++) { const a = i * (N + 1) + k; grass.ix.push(a, a + N + 1, a + 1, a + 1, a + N + 1, a + N + 2); }
+  const gStart = B.p.length / 3;
+  B.add(grass, M.id(), [1, 1, 1]);
+  /* 地面頂點色：草色雜訊、圍欄內較淺、小徑 */
+  for (let v = gStart; v < B.p.length / 3; v++) {
+    const x = B.p[v * 3], z = B.p[v * 3 + 2];
+    const nz = Math.sin(x * 0.7) * Math.cos(z * 0.6) * 0.5 + Math.sin(x * 2.1 + z * 1.3) * 0.25;
+    let c = [0.38 + nz * 0.06, 0.58 + nz * 0.07, 0.26 + nz * 0.04];
+    const inPen = x > pen.x0 && x < pen.x1 && z > pen.z0 && z < pen.z1;
+    if (inPen) c = [0.46 + nz * 0.04, 0.64 + nz * 0.05, 0.32];
+    if (Math.abs(x - 0.4) < 0.9 + Math.sin(z) * 0.2 && z > pen.z1 && z < 14) c = [0.72, 0.6, 0.42];  /* 小徑 */
+    B.c[v * 3] = c[0]; B.c[v * 3 + 1] = c[1]; B.c[v * 3 + 2] = c[2];
+  }
+  /* 圍籬 */
+  const post = C('#b88a58'), rail = C('#d4a670');
+  const fenceLine = (x0, z0, x1, z1, gap) => { const L = Math.hypot(x1 - x0, z1 - z0), n2 = Math.round(L / 1.2), ang = Math.atan2(x1 - x0, z1 - z0); for (let i = 0; i <= n2; i++) { const f = i / n2, x = x0 + (x1 - x0) * f, z = z0 + (z1 - z0) * f; if (gap && Math.abs(x - gap) < 0.9) continue; B.add(R.box, T([x, 0.45, z], [0, 0, 0], [0.12, 0.9, 0.12]), post); B.add(R.box, T([x, 0.93, z], [0, Math.PI / 4, 0], [0.12, 0.08, 0.12]), post); } for (const y of [0.35, 0.7]) { const segs = gap ? [[x0, gap - 0.8], [gap + 0.8, x1]] : [[0, 1]]; if (!gap) B.add(R.box, T([(x0 + x1) / 2, y, (z0 + z1) / 2], [0, ang, 0], [0.06, 0.1, L]), rail); else for (const [a, b] of segs) B.add(R.box, T([(a + b) / 2, y, z0], [0, Math.PI / 2, 0], [0.06, 0.1, Math.abs(b - a)]), rail); } };
+  fenceLine(pen.x0, pen.z0, pen.x1, pen.z0); fenceLine(pen.x0, pen.z1, pen.x1, pen.z1, 0.4); fenceLine(pen.x0, pen.z0, pen.x0, pen.z1); fenceLine(pen.x1, pen.z0, pen.x1, pen.z1);
+  /* 樹 */
+  const leaf = season === 2 ? ['#d8862a', '#c8582a', '#e8b03a'] : season === 3 ? ['#6a8a72', '#7a9a82', '#8aa890'] : season === 0 ? ['#5aa84a', '#7ac85a', '#f2a6c8'] : ['#3f8a3a', '#4a9a42', '#5aa84a'];
+  const pine = season === 3 ? '#5a7a68' : '#2f6a42';
+  for (let i = 0; i < 130; i++) {
+    const a = rnd() * Math.PI * 2, r = 15 + rnd() * 16; const x = Math.cos(a) * r * 1.15, z = Math.sin(a) * r - 2;
+    if (z > 12 && Math.abs(x) < 10) continue;
+    const s = 0.8 + rnd() * 0.9;
+    if (rnd() < 0.55) { B.add(R.cylLo, T([x, 0.5 * s, z], 0, [0.18 * s, 1 * s, 0.18 * s]), C('#6a4a30')); for (let k = 0; k < 3; k++) B.add(R.cone6, T([x, (1 + k * 0.7) * s, z], [0, rnd(), 0], [(1.2 - k * 0.3) * s, 1.4 * s, (1.2 - k * 0.3) * s]), C(pine), 0.12); if (season === 3) B.add(R.cone6, T([x, 2.95 * s, z], 0, [0.4 * s, 0.4 * s, 0.4 * s]), C('#ffffff')); }
+    else { B.add(R.cylLo, T([x, 0.7 * s, z], 0, [0.16 * s, 1.4 * s, 0.16 * s]), C('#7a5636')); for (let k = 0; k < 4; k++) B.add(R.sphereLo, T([x + (rnd() - 0.5) * 0.9 * s, (1.8 + rnd() * 0.6) * s, z + (rnd() - 0.5) * 0.9 * s], 0, [0.75 * s, 0.65 * s, 0.75 * s]), C(leaf[Math.floor(rnd() * leaf.length)]), 0.12); }
+  }
+  /* 灌木、石頭、花、草叢 */
+  for (let i = 0; i < 70; i++) { const x = (rnd() - 0.5) * 34, z = (rnd() - 0.5) * 26; if (x > pen.x0 - 0.5 && x < pen.x1 + 0.5 && z > pen.z0 - 0.5 && z < pen.z1 + 0.5) continue; if (Math.abs(x) < 9 && z > pen.z1 && z < pen.z1 + 7) continue; if (rnd() < 0.5) B.add(R.sphereLo, T([x, 0.2, z], 0, [0.5, 0.4, 0.45]), C(leaf[i % leaf.length]), 0.15); else B.add(R.sphereLo, T([x, 0.08, z], [0, rnd() * 3, 0], [0.3, 0.18, 0.25]), C('#9a9690'), 0.1); }
+  const fl = season === 3 ? [] : season === 2 ? ['#f2c84a', '#e8862a', '#ffffff'] : ['#ffffff', '#ffd84a', '#ff8ab0', '#c8a0ff', '#ffffff'];
+  for (let i = 0; i < 380 && fl.length; i++) { const x = (rnd() - 0.5) * 40, z = (rnd() - 0.5) * 30; if (Math.hypot(x, z) > 22) continue; const c = C(fl[i % fl.length]); B.add(R.sphereLo, T([x, 0.07, z], 0, [0.055, 0.025, 0.055]), c); B.add(R.sphereLo, T([x, 0.085, z], 0, [0.02, 0.015, 0.02]), C('#f2b02a')); }
+  const tuft = season === 3 ? '#a8b0a0' : season === 2 ? '#b8a858' : '#5a9a3a';
+  for (let i = 0; i < 500; i++) { const x = (rnd() - 0.5) * 44, z = (rnd() - 0.5) * 34; if (Math.hypot(x, z) > 24) continue; for (let k = 0; k < 3; k++) B.add(R.cone6, T([x + k * 0.04, 0.1, z], [rnd() * 0.4 - 0.2, 0, rnd() * 0.5 - 0.25], [0.025, 0.22 + rnd() * 0.1, 0.025]), C(tuft), 0.2); }
+  if (season === 3) for (let i = 0; i < 40; i++) { const x = (rnd() - 0.5) * 40, z = (rnd() - 0.5) * 30; B.add(R.sphereLo, T([x, 0.01, z], 0, [0.8 + rnd(), 0.03, 0.6 + rnd()]), C('#f4f6f8')); }
+  /* 遠山 */
+  for (let i = 0; i < 16; i++) { const a = i / 16 * Math.PI * 2 + 0.2, r = 80; B.add(R.cone6, T([Math.cos(a) * r, 0, Math.sin(a) * r], [0, a, 0], [22 + (i % 3) * 8, 24 + (i % 4) * 7, 20]), C(season === 3 ? '#b8c4d0' : '#7a9ab0'), 0.08); }
+  return B.build();
+};
+})();
+
+</script>
+<script>
+/* 3D 世界：場景配置、晝夜光線、兔子行為 AI（依個性使用擺設、吃、睡、理毛、翻肚、扭跳）、柴犬巡邏、
+   夜襲打鬥演出（一般狼／S 級狼人）、破門、禮物、點選互動、鏡頭操作、2D 特效層 */
+(function () {
+'use strict';
+const W3 = window.W3 = { ok: false, sel: null, raidAnim: null, onPick: null };
+const PEN = W3.PEN = { x0: -7.6, x1: 7.6, z0: -6.4, z1: 2.9 };
+const YARD = { x0: -9.5, x1: 9.5, z0: 4.2, z1: 9.5 };
+const HUTCH_Z = -5.35, HX = i => -6.3 + i * 1.8;
+const SLOT = i => [-5.8 + (i % 5) * 2.6, -3.3 + Math.floor(i / 5) * 2.05];
+const TROUGH = [6.4, 2.0];
+const DOGHOUSE = [5.6, 6.4];
+const rnd = (a, b) => a + Math.random() * (b - a);
+const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+const lerp = (a, b, t) => a + (b - a) * t;
+const angLerp = (a, b, t) => { let d = ((b - a + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI; return a + d * t; };
+/* 擺設的使用點：相對座標、高度、動作 */
+const ANCH = {
+  house: { p: [[0, 0.75], [0.55, 0.7]], y: 0, act: 'hide' }, hay: { p: [[-0.3, 0.55], [0.6, 0.5]], y: 0, act: 'eat' }, ball: { p: [[0, -0.45]], y: 0, act: 'ball' },
+  carrot: { p: [[-0.3, 0.5], [0.3, 0.5]], y: 0, act: 'eat' }, tunnel: { p: [[-1.05, 0], [1.05, 0]], y: 0, act: 'tunnel' }, picnic: { p: [[-0.25, 0], [0.25, -0.1]], y: 0.03, act: 'lie' },
+  steps: { p: [[0.15, 0]], y: 0.53, act: 'climb' }, flower: { p: [[-0.3, 0.55], [0.3, 0.55]], y: 0, act: 'sniff' }, mushroom: { p: [[-0.25, 0]], y: 0.42, act: 'climb' },
+  pond: { p: [[0, 0.82], [-0.7, 0.55]], y: 0, act: 'drink' }, lantern: { p: [[0.35, 0.3]], y: 0, act: 'sniff' }, swing: { p: [[0, 0]], y: 0, act: 'swing' },
+  windmill: { p: [[0, 0.6], [0.5, 0.45]], y: 0, act: 'sniff' }, pumpkin: { p: [[0, 0.6]], y: 0, act: 'hide' }, snowman: { p: [[0.3, 0.5], [-0.3, 0.5]], y: 0, act: 'sniff' }, cake: { p: [[-0.4, 0.3], [0.4, 0.3], [0, 0.45]], y: 0, act: 'eat' },
+};
+
+/* ---------- 初始化 ---------- */
+W3.init = function (cv, ov) {
+  W3.cv = cv; W3.ov = ov; W3.ox = ov.getContext('2d');
+  try { if (!G3.init(cv)) return false; } catch (e) { console.error(e); return false; }
+  W3.root = G3.grp(); W3.dyn = G3.grp(); W3.root.add(W3.dyn);
+  W3.cam = { yaw: 0, pitch: 0.74, dist: 14, tgt: [0, 0.4, 0.3], ctgt: [0, 0.4, 0.3], fov: 0.72 };
+  W3.rab = new Map(); W3.dogs = new Map(); W3.dec = new Map(); W3.huts = []; W3.wolves = []; W3.fx = []; W3.season = -1;
+  W3.doghouse = MD.doghouse(); W3.doghouse.root.pos = [DOGHOUSE[0], 0, DOGHOUSE[1]]; W3.doghouse.root.rot = [0, -0.5, 0]; W3.root.add(W3.doghouse.root);
+  W3.trough = MD.trough(); W3.trough.root.pos = [TROUGH[0], 0, TROUGH[1]]; W3.trough.root.rot = [0, -0.4, 0]; W3.root.add(W3.trough.root);
+  W3.lamp = G3.n('sphere', { pos: [0.3, 1.9, -4.3], scl: [0.12, 0.12, 0.12], col: '#ffe0a0', emis: [0, 0, 0] }); W3.root.add(W3.lamp, G3.n('cyl', { pos: [0.3, 0.95, -4.3], scl: [0.04, 1.9, 0.04], col: '#4a3a2a' }));
+  W3.sun = G3.n('sphere', { scl: [3, 3, 3], col: '#fff3c0', emis: [1, 0.95, 0.75], rim: 0 }); W3.root.add(W3.sun);
+  W3.stars = G3.grp(); for (let i = 0; i < 70; i++) { const a = Math.random() * 6.28, e = rnd(0.25, 1.3); W3.stars.add(G3.n('sphereLo', { pos: [Math.cos(a) * Math.cos(e) * 150, Math.sin(e) * 150, Math.sin(a) * Math.cos(e) * 150], scl: [0.35, 0.35, 0.35], col: '#ffffff', emis: [1, 1, 0.95], rim: 0 })); }
+  W3.root.add(W3.stars);
+  W3.bindInput();
+  W3.ok = true;
+  return true;
+};
+
+/* ---------- 同步：資料 → 模型 ---------- */
+W3.sync = function () {
+  const s = F.season();
+  if (s !== W3.season) { W3.season = s; if (W3.scn) W3.root.kids = W3.root.kids.filter(k => k !== W3.scn); W3.scn = G3.grp({ mesh: MD.scenery(s, PEN), vc: true, rim: 0.05 }); W3.root.kids.unshift(W3.scn); }
+  /* 兔籠 */
+  while (W3.huts.length < G.hutch) { const i = W3.huts.length, h = MD.hutch(); h.root.pos = [HX(i), 0, HUTCH_Z]; W3.root.add(h.root); W3.huts.push(h); }
+  W3.huts.forEach((h, i) => { const ok = G.doors[i] !== 0; h.hinge.rot[1] = ok ? 0 : -1.9; h.hinge.rot[2] = ok ? 0 : 0.5; h.hinge.pos[1] = ok ? 0.6 : 0.42; h.warn.visible = !ok; });
+  /* 擺設 */
+  const ids = new Set(G.decor.map(d => d.id));
+  for (const [id, a] of W3.dec) if (!ids.has(id)) { W3.dyn.kids = W3.dyn.kids.filter(k => k !== a.m.root); W3.dec.delete(id); }
+  for (const d of G.decor) if (!W3.dec.has(d.id)) { const m = MD.decor(d.t), [x, z] = SLOT(d.slot); m.root.pos = [x, 0, z]; m.root.rot = [0, (d.slot % 3 - 1) * 0.25, 0]; W3.dyn.add(m.root); W3.dec.set(d.id, { d, m, x, z, users: 0, born: performance.now(), ballOff: [0, 0] }); }
+  /* 兔子（最多 40 隻在戶外） */
+  const show = new Set(G.rabbits.slice(0, 40).map(r => r.id)); if (W3.sel && W3.sel.type === 'rabbit') show.add(W3.sel.id);
+  for (const [id, a] of W3.rab) if (!show.has(id)) { W3.dyn.kids = W3.dyn.kids.filter(k => k !== a.m.root); W3.rab.delete(id); }
+  for (const r of G.rabbits) if (show.has(r.id) && !W3.rab.has(r.id)) W3.addRabbitActor(r);
+  for (const [id, a] of W3.rab) { const r = G.rabbits.find(q => q.id === id); if (!r) continue; const kit = r.age < F.ADULT; if (kit !== a.kit) { W3.dyn.kids = W3.dyn.kids.filter(k => k !== a.m.root); W3.rab.delete(id); W3.addRabbitActor(r, a); } }
+  /* 狗 */
+  const dids = new Set(G.dogs.map(d => d.id));
+  for (const [id, a] of W3.dogs) if (!dids.has(id) && !a.leaving) { W3.dyn.kids = W3.dyn.kids.filter(k => k !== a.m.root); W3.dogs.delete(id); }
+  for (const d of G.dogs) if (!W3.dogs.has(d.id)) { const m = MD.dog(d.ci); const a = { id: d.id, m, x: rnd(YARD.x0 + 1, YARD.x1 - 1), z: rnd(YARD.z0, YARD.z1), yaw: 0, st: 'idle', t: 1, ph: Math.random() * 9 }; m.root.pos = [a.x, 0, a.z]; W3.dyn.add(m.root); W3.dogs.set(d.id, a); }
+};
+W3.addRabbitActor = function (r, old) {
+  const kit = r.age < F.ADULT, m = MD.rabbit(r.coat, kit);
+  const a = old ? Object.assign(old, { m, kit }) : { id: r.id, m, kit, x: rnd(PEN.x0 + 1, PEN.x1 - 1), z: rnd(PEN.z0 + 1.6, PEN.z1 - 0.6), y: 0, yaw: Math.random() * 6.28, st: 'idle', t: rnd(0.5, 2), hopT: 0, blink: rnd(1, 4), ear: rnd(1, 3), earK: [0, 0], ph: Math.random() * 10, hidden: false, dec: null };
+  if (r.age < 3 && !old) { const mom = G.rabbits.find(q => q.nurse && q.id !== r.id); const ma = mom && W3.rab.get(mom.id); if (ma) { a.x = ma.x + rnd(-0.4, 0.4); a.z = ma.z + rnd(-0.4, 0.4); } }
+  m.root.pos = [a.x, a.y, a.z]; m.root.rot = [0, a.yaw, 0];
+  W3.dyn.add(m.root); W3.rab.set(r.id, a);
+};
+
+/* ---------- 兔子 AI ---------- */
+const inPen = (x, z) => [clamp(x, PEN.x0 + 0.4, PEN.x1 - 0.4), clamp(z, PEN.z0 + 1.3, PEN.z1 - 0.4)];
+W3.think = function (a, r) {
+  const P = F.PERS[r.pers], h = G.min / 60, night = h >= 21 || h < 5.5, mood = r.mood;
+  if (a.dec) { a.dec.users = Math.max(0, a.dec.users - 1); a.dec = null; }
+  a.hidden = false; a.y = 0; a.face = null; a.act = null; a.tun = 0;
+  if (W3.sel && W3.sel.type === 'rabbit' && W3.sel.id === a.id) { a.st = 'owner'; a.go = 0; a.tx = a.x; a.tz = a.z; a.t = rnd(3, 5); a.face = Math.atan2(W3.cam.eye[0] - a.x, W3.cam.eye[2] - a.z); a.yaw = a.face; return; }
+  if (W3.raidAnim) { a.st = 'scared'; [a.tx, a.tz] = inPen(a.x * 0.6 + rnd(-1, 1), -4.2 + rnd(-0.3, 0.6)); a.go = 1; a.t = 99; return; }
+  if (night && Math.random() < 0.85) { a.st = 'sleep'; [a.tx, a.tz] = inPen(HX(Math.floor(Math.random() * G.hutch)) + rnd(-0.8, 0.8), -4.3 + rnd(-0.2, 0.7)); a.go = 1; a.t = rnd(20, 40); return; }
+  if (r.age < 3) { const mom = G.rabbits.find(q => q.nurse); const ma = mom && W3.rab.get(mom.id); a.st = 'idle'; if (ma) { a.tx = ma.x + rnd(-0.4, 0.4); a.tz = ma.z + rnd(-0.4, 0.4); a.go = 1; } a.t = rnd(2, 4); return; }
+  /* 候選活動與權重 */
+  const C = [];
+  C.push(['idle', 2], ['wander', 3], ['groom', r.pers === 'neat' ? 4 : 1], ['flop', r.pers === 'lazy' ? 3.5 : mood > 60 ? 0.8 : 0.3], ['binky', (r.pers === 'active' ? 2.5 : 0.3) * (mood / 80)], ['eat', r.full < 50 ? 4 : r.pers === 'glutton' ? 2 : 0.8]);
+  if (r.pers === 'clingy' || r.aff >= 60) C.push(['owner', 1.5]);
+  for (const [, d] of W3.dec) {
+    const A = ANCH[d.d.t]; if (!A || d.users >= A.p.length) continue;
+    const like = P.likes.includes(d.d.t), fresh = performance.now() - d.born < 90000;
+    C.push([d, 1.4 + (like ? 4 : 0) + (fresh ? (r.pers === 'curious' ? 6 : 3) : 0)]);
+  }
+  let tot = 0; for (const c of C) tot += c[1];
+  let x = Math.random() * tot, pick = C[0][0];
+  for (const c of C) { x -= c[1]; if (x <= 0) { pick = c[0]; break; } }
+  a.go = 1;
+  if (typeof pick === 'object') {
+    const d = pick, A = ANCH[d.d.t], k = d.users % A.p.length, cs = Math.cos(d.m.root.rot[1]), sn = Math.sin(d.m.root.rot[1]);
+    const [px, pz] = A.p[k];
+    a.tx = d.x + px * cs + pz * sn; a.tz = d.z - px * sn + pz * cs; a.dec = d; d.users++; a.st = 'use'; a.act = A.act; a.ay = A.y; a.t = rnd(6, 12);
+    a.face = Math.atan2(d.x - a.tx, d.z - a.tz);
+    if (A.act === 'climb' || A.act === 'lie' || A.act === 'swing') { a.tx = d.x + px * cs; a.tz = d.z - px * sn; }
+    return;
+  }
+  a.st = pick; a.t = rnd(2.5, 6);
+  if (pick === 'wander') [a.tx, a.tz] = inPen(a.x + rnd(-3, 3), a.z + rnd(-2.5, 2.5));
+  else if (pick === 'eat') { a.tx = TROUGH[0] + rnd(-0.6, 0.6); a.tz = TROUGH[1] - 0.55; a.face = 0.3; a.t = rnd(5, 9); }
+  else if (pick === 'owner') { a.tx = clamp(W3.cam.tgt[0] + rnd(-1, 1), PEN.x0 + 1, PEN.x1 - 1); a.tz = PEN.z1 - 0.7; a.face = 0; }
+  else { a.tx = a.x; a.tz = a.z; a.go = 0; }
+};
+W3.stepRabbit = function (a, r, dt, T) {
+  const m = a.m;
+  a.t -= dt;
+  /* 移動（跳躍前進） */
+  let moving = false;
+  if (a.go) {
+    const dx = a.tx - a.x, dz = a.tz - a.z, d = Math.hypot(dx, dz);
+    if (d < 0.06) { a.go = 0; a.hopT = 0; if (a.face != null) a.yaw = a.face; }
+    else { moving = true; const sp = (a.st === 'scared' ? 2.6 : a.st === 'runaway' ? 2.4 : 1.15) * (a.kit ? 0.8 : 1); const k = Math.min(d, sp * dt); a.x += dx / d * k; a.z += dz / d * k; a.yaw = angLerp(a.yaw, Math.atan2(dx, dz), Math.min(1, dt * 10)); a.hopT += dt; }
+  }
+  /* 擺設中的特殊位移 */
+  if (!a.go && a.st === 'use') {
+    if (a.act === 'hide' && !a.hidden && a.t < 7) a.hidden = true;
+    if (a.act === 'tunnel' && !a.tun) { a.tun = 1; a.hidden = true; const d = a.dec; a.tx = d.x * 2 - a.x; a.tz = d.z * 2 - a.z; a.go = 1; a.t = 4; }
+    if (a.act === 'climb' || a.act === 'lie' || a.act === 'swing') a.y = lerp(a.y, a.ay || 0, Math.min(1, dt * 6));
+    if (a.act === 'ball' && a.dec && a.dec.m.anim.ball) { const b = a.dec.m.anim.ball; const push = Math.sin(T * 1.5 + a.ph); b.pos[0] = Math.sin(a.yaw) * 0.25 * (push > 0 ? push : 0); b.pos[2] = Math.cos(a.yaw) * 0.25 * (push > 0 ? push : 0); b.rot[0] += dt * push * 3; }
+    if (a.act === 'swing' && a.dec && a.dec.m.anim.swing) { const sw = a.dec.m.anim.swing; sw.rot[0] = Math.sin(T * 2.2) * 0.45; a.y = 0.32 - Math.cos(sw.rot[0]) * 0.02; a.z = a.dec.z + Math.sin(sw.rot[0]) * 0.6; }
+    if (a.dec) { const fav = F.useDecor(r, a.dec.d.t); if (fav && Math.random() < dt * 0.35) W3.fxAt('💗', [a.x, a.y + 0.7, a.z], 1.4); }
+  }
+  if (a.tun && !a.go) { a.tun = 0; a.hidden = false; a.t = 0; }
+  if (a.t <= 0 && !a.go && a.st !== 'react') W3.think(a, r);
+  if (a.st === 'react' && a.t <= 0) W3.think(a, r);
+  /* 骨架動畫 */
+  const hop = moving ? Math.abs(Math.sin(a.hopT * Math.PI / 0.34)) : 0;
+  let by = moving ? hop * (a.st === 'scared' ? 0.16 : 0.12) : 0, pitch = moving ? (Math.cos(a.hopT * Math.PI / 0.34)) * 0.18 : 0, roll = 0, sq = 1;
+  let headX = 0, headY = Math.sin(T * 0.7 + a.ph) * 0.25, headZ = 0, eyesShut = false, earBack = 0, pawUp = 0;
+  const breathe = 1 + Math.sin(T * 3.2 + a.ph) * 0.018;
+  const st = a.st, act = a.act;
+  if (!moving) {
+    if (st === 'eat' || (st === 'use' && act === 'eat') || (st === 'use' && act === 'drink')) { headX = 0.55 + Math.sin(T * 12) * 0.04; headY = 0; }
+    else if (st === 'groom') { headX = 0.35; headZ = Math.sin(T * 5) * 0.25; pawUp = 1; }
+    else if (st === 'flop' || (st === 'use' && act === 'lie')) { roll = 1.35; by = -0.04; eyesShut = Math.sin(T * 0.3 + a.ph) > -0.6; earBack = 0.6; }
+    else if (st === 'sleep') { sq = 0.86; eyesShut = true; earBack = 0.9; headX = 0.15; headY = 0; }
+    else if (st === 'binky') { const p = (T * 1.6 + a.ph) % 2; if (p < 0.55) { const q = p / 0.55; by = Math.sin(q * Math.PI) * 0.5; roll = Math.sin(q * Math.PI * 2) * 0.6; a.yaw += dt * 5; } }
+    else if (st === 'use' && act === 'sniff') { headX = -0.1 + Math.sin(T * 9) * 0.05; }
+    else if (st === 'scared') { roll = Math.sin(T * 40) * 0.04; earBack = 1; sq = 0.92; }
+    else if (st === 'react') { const k = a.react; if (k === 'love' || k === 'happy') { eyesShut = true; by = Math.abs(Math.sin(T * 6)) * (k === 'love' ? 0.1 : 0.05); } if (k === 'binky') { const p = (a.t % 1.1) / 1.1; by = Math.sin(p * Math.PI) * 0.5; roll = Math.sin(p * Math.PI * 2) * 0.6; a.yaw += dt * 6; } if (k === 'meh') headY = 1.2; }
+    else if (st === 'owner') { headX = -0.25; headY = 0; }
+  }
+  /* 眨眼與耳朵抖動 */
+  a.blink -= dt; if (a.blink < 0) { a.blink = rnd(2.5, 5.5); a.blinkOn = 0.13; }
+  if (a.blinkOn > 0) { a.blinkOn -= dt; eyesShut = true; }
+  a.ear -= dt; if (a.ear < 0) { a.ear = rnd(1.5, 4); a.earK = [rnd(-0.3, 0.3), rnd(-0.3, 0.3)]; }
+  a.earK[0] *= 0.94; a.earK[1] *= 0.94;
+  /* 套用 */
+  if (st === 'owner' && !moving && W3.sel && W3.sel.id === a.id && W3.cam.eye) a.yaw = angLerp(a.yaw, Math.atan2(W3.cam.eye[0] - a.x, W3.cam.eye[2] - a.z), Math.min(1, dt * 6));
+  m.root.pos[0] = a.x; m.root.pos[1] = a.y; m.root.pos[2] = a.z; m.root.rot[1] = a.yaw; m.root.visible = !a.hidden;
+  m.bodyG.pos[1] = by; m.bodyG.rot[0] = -pitch; m.bodyG.rot[2] = roll;
+  m.torso.scl[0] = breathe; m.torso.scl[1] = sq * (moving && hop < 0.15 ? 0.9 : 1) / breathe * breathe; m.torso.scl[2] = breathe;
+  m.headG.rot[0] = headX; m.headG.rot[1] = headY; m.headG.rot[2] = headZ;
+  m.nose.scl[1] = 0.014 * (1 + Math.max(0, Math.sin(T * (st === 'use' && act === 'sniff' ? 30 : 14) + a.ph)) * 0.5);
+  for (const e of m.eyes) e.lid.visible = eyesShut;
+  m.ears.forEach((e, i) => { e.g.rot[0] = e.base[0] - earBack * (r.coat.br === 'lop' ? 0 : 0.9) + a.earK[i] * 0.5; e.g.rot[1] = e.base[1]; e.g.rot[2] = e.base[2] + a.earK[i] * 0.3; });
+  m.feet[0].pos[1] = 0.04 + pawUp * 0.12; m.feet[1].pos[1] = 0.04 + pawUp * 0.12; m.feet[0].pos[2] = m.feet[1].pos[2] = 0.17 + pawUp * 0.04;
+  m.shadow.pos[1] = 0.012 - by;
+  m.shadow.alpha = st === 'flop' ? 0.18 : 0.22;
+  /* 睡覺的 Zzz */
+  if (st === 'sleep' && !moving && Math.random() < dt * 0.4) W3.fxAt('💤', [a.x, a.y + 0.55, a.z], 2);
+  if (r.sick && Math.random() < dt * 0.15) W3.fxAt('🤒', [a.x, 0.7, a.z], 1.6);
+};
+/* 互動反應 */
+W3.react = function (id, kind) {
+  const a = W3.rab.get(id); if (!a) return;
+  if (a.dec) { a.dec.users = Math.max(0, a.dec.users - 1); a.dec = null; }
+  a.hidden = false; a.y = 0; a.go = 0;
+  if (kind === 'run') { a.st = 'runaway'; [a.tx, a.tz] = inPen(a.x + rnd(-3, 3), a.z - 2); a.go = 1; a.t = 3; W3.fxAt('💦', [a.x, 0.7, a.z], 1.3); return; }
+  a.st = 'react'; a.react = kind; a.t = kind === 'binky' ? 2.4 : 2;
+  a.yaw = Math.atan2(W3.cam.eye[0] - a.x, W3.cam.eye[2] - a.z);
+  const n = kind === 'love' || kind === 'binky' ? 5 : kind === 'meh' ? 1 : 3;
+  for (let i = 0; i < n; i++) W3.fxAt(kind === 'meh' ? '💢' : '💗', [a.x + rnd(-0.2, 0.2), 0.6 + i * 0.05, a.z], 1.4 + i * 0.15, i * 0.12);
+};
+
+/* ---------- 狗 ---------- */
+W3.stepDog = function (a, d, dt, T) {
+  const m = a.m, h = G.min / 60, night = h >= 21 || h < 5.5;
+  if (a.leaving) return;
+  a.t -= dt;
+  if (!a.fight && a.t <= 0) {
+    if (night) { a.st = Math.random() < 0.6 ? 'lie' : 'walk'; a.tx = DOGHOUSE[0] + rnd(-1.5, 3); a.tz = DOGHOUSE[1] + rnd(-0.5, 2); }
+    else { a.st = U.pick(['walk', 'walk', 'sit', 'lie', 'walk']); a.tx = rnd(YARD.x0 + 1, YARD.x1 - 1); a.tz = rnd(YARD.z0, YARD.z1); }
+    a.t = rnd(3, 8);
+  }
+  let moving = false, sp = a.fight ? 4.5 : 1.6;
+  if (a.st === 'walk' || a.fight) {
+    const dx = a.tx - a.x, dz = a.tz - a.z, dd = Math.hypot(dx, dz);
+    if (dd > 0.08) { moving = true; const k = Math.min(dd, sp * dt); a.x += dx / dd * k; a.z += dz / dd * k; a.yaw = angLerp(a.yaw, Math.atan2(dx, dz), Math.min(1, dt * 8)); }
+    else if (!a.fight) a.st = 'sit';
+  }
+  a.ph += dt * (moving ? (a.fight ? 18 : 9) : 0);
+  const sw = moving ? Math.sin(a.ph) * 0.6 : 0;
+  m.legs.forEach((l, i) => (l.rot[0] = (i === 0 || i === 3 ? sw : -sw)));
+  m.tailG.rot[1] = Math.sin(T * (d && d.hp > 50 ? 14 : 4)) * 0.5;
+  const sit = !moving && a.st === 'sit', lie = !moving && a.st === 'lie';
+  m.bodyG.pos[1] = lie ? -0.2 : sit ? -0.06 : moving ? Math.abs(Math.sin(a.ph)) * 0.04 : 0;
+  m.bodyG.rot[0] = sit ? -0.35 : 0;
+  m.headG.rot[0] = lie ? 0.35 : sit ? 0.3 : 0; m.headG.rot[1] = moving ? 0 : Math.sin(T * 0.6 + a.id) * 0.4;
+  m.tongue.visible = moving || (sit && Math.sin(T + a.id) > 0);
+  m.bandage.visible = d && d.hp < 50;
+  m.root.pos[0] = a.x; m.root.pos[2] = a.z; m.root.rot[1] = a.yaw;
+  if (a.lunge) { a.lunge -= dt * 3; const k = Math.max(0, Math.sin(a.lunge * Math.PI)); m.root.pos[0] += Math.sin(a.yaw) * k * 0.5; m.root.pos[2] += Math.cos(a.yaw) * k * 0.5; m.bodyG.rot[0] = -k * 0.4; if (a.lunge <= 0) a.lunge = 0; }
+  for (const b of m.body) b.flash = Math.max(0, (b.flash || 0) - dt * 3);
+};
+
+/* ---------- 夜襲演出 ---------- */
+W3.startRaid = function (res) {
+  F.hold = true;
+  const A = { res, t: 0, phase: 0, wolves: [], pairs: [] };
+  const n = res.S ? 1 : res.n;
+  for (let i = 0; i < n; i++) {
+    const m = res.S ? MD.werewolf() : MD.wolf();
+    const w = { m, x: -17 - i * 1.3, z: 6 + (i - n / 2) * 1.2, yaw: Math.PI / 2, ph: Math.random() * 9, hp: 1, S: res.S };
+    m.root.pos = [w.x, 0, w.z]; m.root.rot = [0, w.yaw, 0]; W3.dyn.add(m.root); A.wolves.push(w);
+  }
+  /* 狗衝向狼 */
+  const dogs = [...W3.dogs.values()];
+  dogs.forEach((a, i) => { a.fight = 1; a.tx = -5.6 + (i % 2) * 0.6; a.tz = 6 + (i - dogs.length / 2) * 0.9; });
+  A.dogs = dogs;
+  W3.raidAnim = A;
+  for (const [, ra] of W3.rab) ra.t = 0;
+  W3.banner(res.S ? '💀 S 級狼人出現了！' : `🐺 ${res.n} 隻野狼來襲！`, '#a8281e', 3);
+  W3.cam.focusRaid = 1;
+};
+W3.stepRaid = function (dt, T) {
+  const A = W3.raidAnim; if (!A) return;
+  A.t += dt;
+  const res = A.res;
+  for (const w of A.wolves) {
+    const m = w.m;
+    let tx = w.tx, tz = w.tz;
+    if (A.phase === 0) { tx = -6.8 - (A.wolves.indexOf(w) % 2) * 0.7; tz = w.z; }
+    let moving = false;
+    if (tx != null) { const dx = tx - w.x, dz = tz - w.z, d = Math.hypot(dx, dz); if (d > 0.1) { moving = true; const sp = w.S ? 3.8 : 5.2, k = Math.min(d, sp * dt); w.x += dx / d * k; w.z += dz / d * k; w.yaw = angLerp(w.yaw, Math.atan2(dx, dz), Math.min(1, dt * 8)); } }
+    w.ph += dt * (moving ? 16 : 0);
+    if (w.S) { const s = moving ? Math.sin(w.ph * 0.6) * 0.5 : 0; m.legs[0].rot[0] = s; m.legs[1].rot[0] = -s; m.arms[0].rot[0] = -s * 0.8 - (A.phase === 1 ? Math.max(0, Math.sin(T * 6)) * 1.4 : 0); m.arms[1].rot[0] = s * 0.8 - (A.phase === 1 ? Math.max(0, Math.sin(T * 6 + 1.5)) * 1.4 : 0); m.aura.scl[0] = 1.4 + Math.sin(T * 4) * 0.1; m.headG.rot[0] = A.phase === 0 && !moving ? -0.6 : 0; }
+    else { const s = moving ? Math.sin(w.ph) * 0.7 : 0; m.legs.forEach((l, i) => (l.rot[0] = i === 0 || i === 3 ? s : -s)); m.tailG.rot[0] = A.phase === 2 && res.repelled ? 0.8 : 0; m.jaw.pos[1] = -0.1 - (A.phase === 1 ? Math.max(0, Math.sin(T * 10)) * 0.05 : 0); }
+    if (w.lunge) { w.lunge -= dt * 2.6; const k = Math.max(0, Math.sin(w.lunge * Math.PI)); m.bodyG.pos[2] = k * 0.6; m.bodyG.rot[0] = -k * 0.3; if (w.lunge <= 0) { w.lunge = 0; m.bodyG.pos[2] = 0; } }
+    if (w.carry) { const d = w.carry; d.m.root.pos = [w.x + Math.sin(w.yaw) * 0.9, w.S ? 1.4 : 0.6, w.z + Math.cos(w.yaw) * 0.9]; d.m.root.rot = [0.3, w.yaw + 1.5, 1.2]; }
+    m.root.pos[0] = w.x; m.root.pos[2] = w.z; m.root.rot[1] = w.yaw;
+    m.bodyG.pos[1] = moving && !w.S ? Math.abs(Math.sin(w.ph)) * 0.06 : 0;
+  }
+  /* 階段 0：靠近；1：打鬥；2：結果；3：離開 */
+  const arrived = A.wolves.every(w => w.x > -7.6 - (A.wolves.indexOf(w) % 2) * 0.7);
+  if (A.phase === 0 && (arrived || A.t > 7)) {
+    A.phase = 1; A.t = 0;
+    if (!A.dogs.length) { A.phase = 2; A.t = 0; }
+    A.dogs.forEach((d, i) => { const w = A.wolves[i % A.wolves.length]; d.tx = w.x + 0.9 + (i >= A.wolves.length ? 0.5 : 0); d.tz = w.z + (i >= A.wolves.length ? 0.6 : 0); d.foe = w; });
+  }
+  if (A.phase === 1) {
+    for (const d of A.dogs) { if (d.foe) { d.yaw = Math.atan2(d.foe.x - d.x, d.foe.z - d.z); } if (!d.lunge && Math.random() < dt * 1.8) { d.lunge = 1; W3.puff([d.x - 0.5, 0.5, d.z]); } }
+    for (const w of A.wolves) if (!w.lunge && Math.random() < dt * (w.S ? 1.4 : 1.6)) { w.lunge = 1; const d = A.dogs.filter(x => x.foe === w)[0] || A.dogs[0]; if (d) { for (const b of d.m.body) b.flash = 0.8; const info = res.dogs.find(x => x.id === d.id); W3.fxAt(`-${Math.max(1, Math.round((info ? info.dmg : 10) / 4))}`, [d.x, 1.1, d.z], 1, 0, '#ff5a4a'); W3.puff([d.x, 0.4, d.z]); } }
+    if (Math.random() < dt * 6) { const w = U.pick(A.wolves); W3.puff([w.x + rnd(0, 1), rnd(0.2, 0.9), w.z + rnd(-0.4, 0.4)]); }
+    if (A.t > (res.S ? 5 : 3.6)) {
+      A.phase = 2; A.t = 0;
+      if (res.repelled) { W3.banner(res.S ? '🏆 擊退狼人！獲得賞金 $1,500' : '🛡️ 看門狗擊退了狼群！', '#2f7a3a', 3); for (const w of A.wolves) { w.tx = -26; w.tz = w.z + rnd(-2, 2); } }
+      else {
+        if (res.taken != null) { const d = W3.dogs.get(res.taken); const w = A.wolves[0]; if (d) { d.leaving = 1; w.carry = d; } W3.banner(`😢 「${res.takenName}」被狼人叼走了……`, '#5a2030', 3.5); }
+        else W3.banner(A.dogs.length ? '狗狗擋不住，狼衝進兔舍了！' : '沒有看門狗，狼衝進兔舍了！', '#a8281e', 2.5);
+        /* 前往被破壞的門 */
+        A.wolves.forEach((w, i) => { const j = res.doors[i % Math.max(1, res.doors.length)]; if (res.doors.length && !w.carry) { w.tx = HX(j) + 0.42; w.tz = HUTCH_Z + 1.3; w.door = j; } else { w.tx = -26; w.tz = w.z; } });
+      }
+      for (const d of A.dogs) { d.fight = 0; d.st = 'sit'; d.t = 4; }
+    }
+  }
+  if (A.phase === 2) {
+    for (const w of A.wolves) if (w.door != null && Math.hypot(w.tx - w.x, w.tz - w.z) < 0.2) { w.scr = (w.scr || 0) + dt; w.lunge = w.lunge || (Math.random() < dt * 4 ? 1 : 0); if (w.scr > 1.4) { const h = W3.huts[w.door]; if (h) { h.hinge.rot[1] = -1.9; h.hinge.rot[2] = 0.5; h.hinge.pos[1] = 0.42; h.warn.visible = true; } W3.puff([HX(w.door) + 0.4, 0.6, HUTCH_Z + 0.8]); W3.fxAt('💥', [HX(w.door) + 0.4, 1.2, HUTCH_Z + 0.7], 1.2); w.door = null; w.tx = -26; w.tz = 6; } }
+    if (A.t > 6.5 || A.wolves.every(w => w.x < -20 && w.door == null)) {
+      for (const w of A.wolves) W3.dyn.kids = W3.dyn.kids.filter(k => k !== w.m.root);
+      for (const [id, a] of W3.dogs) if (a.leaving) { W3.dyn.kids = W3.dyn.kids.filter(k => k !== a.m.root); W3.dogs.delete(id); }
+      W3.raidAnim = null; F.hold = false; W3.cam.focusRaid = 0;
+      for (const [, ra] of W3.rab) ra.t = 0;
+      F.ev.push({ k: 'raidEnd', r: res });
+    }
+  }
+};
+W3.puff = p => W3.fx.push({ k: 'puff', p, t: 0, dur: 0.6, r: rnd(10, 18) });
+W3.fxAt = (txt, p, dur, delay, col) => W3.fx.push({ k: 'txt', txt, p: p.slice(), t: -(delay || 0), dur: dur || 1.4, col });
+W3.banner = (m, col, dur) => { W3.ban = { m, col, t: 0, dur }; };
+
+/* ---------- 光線與天空 ---------- */
+const K = [[0, '#0e1632', '#24304e', 0], [4.5, '#1a2244', '#3a3c66', 0.05], [5.8, '#f0a070', '#fbd0a0', 0.5], [7.5, '#9ccbea', '#dceefa', 1], [16.5, '#9ccbea', '#e2f2fa', 1], [18.2, '#f08a5c', '#f8c08a', 0.55], [19.4, '#3a3a6a', '#6a5478', 0.1], [20.5, '#0e1632', '#24304e', 0], [24, '#0e1632', '#24304e', 0]];
+const hx = G3.hex;
+W3.env = function () {
+  const h = G.min / 60;
+  let a = K[0], b = K[1]; for (let i = 0; i < K.length - 1; i++) if (h >= K[i][0] && h <= K[i + 1][0]) { a = K[i]; b = K[i + 1]; break; }
+  const f = (h - a[0]) / Math.max(0.01, b[0] - a[0]);
+  const mixv = (x, y) => { const A = hx(x), B = hx(y); return [A[0] + (B[0] - A[0]) * f, A[1] + (B[1] - A[1]) * f, A[2] + (B[2] - A[2]) * f]; };
+  const top = mixv(a[1], b[1]), hor = mixv(a[2], b[2]), day = a[3] + (b[3] - a[3]) * f;
+  const rain = G.weather === '雨' || G.weather === '颱風', cloudy = rain || G.weather === '陰';
+  const sa = (h - 6) / 12 * Math.PI;
+  const sunD = day > 0.05 ? [Math.cos(sa) * 0.6, Math.max(0.2, Math.sin(sa)), 0.5] : [-0.3, 0.8, 0.4];
+  const l = Math.hypot(...sunD); sunD[0] /= l; sunD[1] /= l; sunD[2] /= l;
+  const warm = h < 9 || h > 16 ? [1, 0.78, 0.55] : [1, 0.96, 0.86];
+  const k = day * (cloudy ? 0.55 : 1);
+  const sunC = day > 0.05 ? [warm[0] * 0.85 * k, warm[1] * 0.85 * k, warm[2] * 0.85 * k] : [0.12, 0.16, 0.3];
+  const nb = Math.max(0, 0.3 - day) * 0.5;
+  const sky = [top[0] * 0.55 + 0.15 * day + nb * 0.35, top[1] * 0.55 + 0.15 * day + nb * 0.45, top[2] * 0.55 + 0.14 * day + nb * 0.8];
+  const gnd = [0.3 * day + 0.06, 0.32 * day + 0.07, 0.22 * day + 0.1];
+  let fog = hor; if (cloudy) fog = [fog[0] * 0.8 + 0.08, fog[1] * 0.8 + 0.08, fog[2] * 0.8 + 0.1];
+  const lamp = Math.max(0, 1 - day * 1.6);
+  let lantern = null; for (const [, d] of W3.dec) if (d.d.t === 'lantern') { lantern = [d.x, 1.1, d.z]; break; }
+  return { sunD, sunC, sky, gnd, fog, fogN: rain ? 18 : 30, fogF: rain ? 70 : 140, day, top,
+    pl0: [0.3, 1.9, -4.3], pc0: [1.6 * lamp, 1.1 * lamp, 0.55 * lamp], pl1: lantern || [DOGHOUSE[0], 1.4, DOGHOUSE[1] + 0.9], pc1: [1.3 * lamp, 0.95 * lamp, 0.5 * lamp] };
+};
+
+/* ---------- 每格更新與繪製 ---------- */
+W3.frame = function (dt, T, W, H) {
+  if (!W3.ok) return;
+  const dpr = Math.min(G.quality >= 2 ? 2 : 1.5, devicePixelRatio || 1);
+  const cw = Math.round(W * dpr), ch = Math.round(H * dpr);
+  if (W3.cv.width !== cw || W3.cv.height !== ch) { W3.cv.width = cw; W3.cv.height = ch; W3.ov.width = cw; W3.ov.height = ch; }
+  W3.sync();
+  for (const [id, a] of W3.rab) { const r = G.rabbits.find(q => q.id === id); if (r) W3.stepRabbit(a, r, dt, T); }
+  for (const [id, a] of W3.dogs) W3.stepDog(a, G.dogs.find(q => q.id === id), dt, T);
+  W3.stepRaid(dt, T);
+  for (const [, d] of W3.dec) { if (d.m.anim.blades) d.m.anim.blades.rot[2] += dt * 1.5; if (d.m.anim.swing && d.users === 0) d.m.anim.swing.rot[0] *= 0.97; }
+  /* 飼料槽 */
+  const lv = clamp(G.hay / Math.max(1, F.dailyNeed().hay * 3), 0, 1); W3.trough.hay.scl[1] = 0.02 + lv * 0.1; W3.trough.hay.visible = G.hay > 0.05; W3.trough.pel.forEach((p, i) => (p.visible = G.pel > i * 0.6));
+  /* 鏡頭 */
+  const c = W3.cam;
+  let tg = [0, 0.4, W / H < 1 ? -1.4 : 0.3];
+  if (W3.sel) { const p = W3.selPos(); if (p) tg = [p[0], p[1] + 0.25, p[2]]; }
+  if (c.focusRaid) { const A = W3.raidAnim; const w = A && A.wolves.find(q => q.door != null) || (A && A.wolves[0]); tg = w && w.x > -14 ? [w.x * 0.6 - 2, 0.6, w.z * 0.8] : [-5.5, 0.6, 5.5]; }
+  for (let i = 0; i < 3; i++) c.ctgt[i] = lerp(c.ctgt[i], tg[i], Math.min(1, dt * 3));
+  const asp = W / H, fit = asp < 1 ? 1 + (1 - asp) * 1.25 : 1;
+  const dist = c.focusRaid ? 10 * fit : W3.sel ? 4.6 * (asp < 1 ? 1.25 : 1) : c.dist * fit;
+  const pit = W3.sel ? 0.5 : c.pitch;
+  c.cp = lerp(c.cp || pit, pit, Math.min(1, dt * 3));
+  c.cdist = lerp(c.cdist || dist, dist, Math.min(1, dt * 3));
+  c.eye = [c.ctgt[0] + Math.sin(c.yaw) * Math.cos(c.cp) * c.cdist, c.ctgt[1] + Math.sin(c.cp) * c.cdist, c.ctgt[2] + Math.cos(c.yaw) * Math.cos(c.cp) * c.cdist];
+  const env = W3.env();
+  W3.sun.pos = env.day > 0.05 ? [env.sunD[0] * 140, env.sunD[1] * 140, env.sunD[2] * 140] : [-60, 110, -90];
+  W3.sun.emis = env.day > 0.05 ? [1, 0.92, 0.7] : [0.95, 0.95, 1]; W3.sun.scl = env.day > 0.05 ? [5, 5, 5] : F.fullMoon() ? [7, 7, 7] : [4, 4, 4]; W3.sun.visible = G.weather !== '雨' && G.weather !== '颱風';
+  W3.stars.visible = env.day < 0.3 && G.weather !== '雨';
+  W3.lamp.emis = env.day < 0.5 ? [1, 0.8, 0.4] : [0.1, 0.08, 0.05];
+  if (W3.scn) W3.scn.tint = [1, 1, 1];
+  G3.render(W3.root, { eye: c.eye, tgt: c.ctgt, fov: c.fov }, env, cw, ch, G.quality);
+  G3.view.W = W; G3.view.H = H;
+  W3.drawOverlay(dt, T, W, H, dpr, env);
+};
+W3.selPos = function () { const s = W3.sel; if (!s) return null; const a = s.type === 'rabbit' ? W3.rab.get(s.id) : s.type === 'dog' ? W3.dogs.get(s.id) : null; return a ? [a.x, a.y || 0, a.z] : null; };
+
+/* ---------- 2D 特效層 ---------- */
+W3.drawOverlay = function (dt, T, W, H, dpr, env) {
+  const c = W3.ox; c.setTransform(dpr, 0, 0, dpr, 0, 0); c.clearRect(0, 0, W, H);
+  c.textAlign = 'center'; c.textBaseline = 'middle';
+  /* 天空漸層（地平線以上） */
+  /* 禮物 */
+  W3.giftHit = [];
+  for (const g of G.gifts) {
+    if (g.x == null) { const a = W3.rab.get(g.rid); g.x = a ? a.x : rnd(PEN.x0 + 1, PEN.x1 - 1); g.z = a ? a.z + 0.3 : rnd(-2, 2); }
+    const s = G3.project([g.x, 0.35 + Math.sin(T * 3 + g.id) * 0.08, g.z]); if (!s) continue;
+    c.font = '26px sans-serif'; c.fillStyle = 'rgba(255,255,255,0.55)'; c.beginPath(); c.arc(s[0], s[1], 18, 0, 6.3); c.fill(); c.fillText(g.kind, s[0], s[1] + 1);
+    W3.giftHit.push({ id: g.id, x: s[0], y: s[1] });
+  }
+  /* 選中的兔子：名牌 */
+  if (W3.sel && W3.sel.type === 'rabbit') { const a = W3.rab.get(W3.sel.id), r = G.rabbits.find(q => q.id === W3.sel.id); if (a && r) { const s = G3.project([a.x, a.y + (a.kit ? 0.55 : 0.9), a.z]); if (s) { const t = `${r.nm} ${F.PERS[r.pers].ic}`; c.font = '700 14px "Huninn","Noto Sans TC",sans-serif'; const w = c.measureText(t).width + 18; c.fillStyle = 'rgba(255,253,248,0.95)'; rr(c, s[0] - w / 2, s[1] - 28, w, 24, 12); c.fill(); c.fillStyle = '#2b2622'; c.fillText(t, s[0], s[1] - 15); c.fillStyle = 'rgba(255,253,248,0.95)'; c.beginPath(); c.moveTo(s[0] - 6, s[1] - 4); c.lineTo(s[0] + 6, s[1] - 4); c.lineTo(s[0], s[1] + 3); c.fill(); } } }
+  /* 狗的血條 */
+  for (const [id, a] of W3.dogs) { const d = G.dogs.find(q => q.id === id); if (!d || (d.hp >= 99 && !W3.raidAnim)) continue; const s = G3.project([a.x, 1.15, a.z]); if (!s) continue; c.fillStyle = 'rgba(0,0,0,.45)'; rr(c, s[0] - 22, s[1], 44, 7, 3); c.fill(); c.fillStyle = d.hp < 30 ? '#e8402a' : d.hp < 60 ? '#e8b03a' : '#5ac84a'; rr(c, s[0] - 21, s[1] + 1, 42 * d.hp / 100, 5, 2); c.fill(); }
+  /* 文字特效 */
+  for (const f of W3.fx) {
+    f.t += dt; if (f.t < 0) continue;
+    const k = f.t / f.dur;
+    if (f.k === 'txt') { const s = G3.project([f.p[0], f.p[1] + k * 0.7, f.p[2]]); if (!s) continue; c.globalAlpha = Math.max(0, 1 - k * k); c.font = f.col ? '900 20px "Huninn",sans-serif' : `${18 + (1 - k) * 6}px sans-serif`; if (f.col) { c.lineWidth = 4; c.strokeStyle = 'rgba(0,0,0,.6)'; c.strokeText(f.txt, s[0], s[1]); c.fillStyle = f.col; } c.fillText(f.txt, s[0], s[1]); c.globalAlpha = 1; }
+    else if (f.k === 'puff') { const s = G3.project(f.p); if (!s) continue; c.globalAlpha = Math.max(0, 0.7 * (1 - k)); c.fillStyle = '#efe6d6'; c.beginPath(); c.arc(s[0], s[1], f.r * (0.6 + k * 1.4), 0, 6.3); c.fill(); c.globalAlpha = 1; }
+  }
+  W3.fx = W3.fx.filter(f => f.t < f.dur);
+  /* 天氣 */
+  if (G.weather === '雨' || G.weather === '颱風') { c.strokeStyle = 'rgba(210,225,255,0.45)'; c.lineWidth = 1.2; c.beginPath(); const n = G.weather === '颱風' ? 140 : 80, sl = G.weather === '颱風' ? 10 : 3; for (let i = 0; i < n; i++) { const x = (i * 53.7 + T * (G.weather === '颱風' ? 400 : 120)) % (W + 40) - 20, y = (i * 97.1 + T * 520) % H; c.moveTo(x, y); c.lineTo(x - sl, y + 14); } c.stroke(); }
+  if (G.weather === '寒流' || (F.season() === 3 && G.weather === '陰')) { c.fillStyle = 'rgba(255,255,255,0.85)'; for (let i = 0; i < 60; i++) { const x = (i * 71.3 + Math.sin(T + i) * 20 + T * 15) % W, y = (i * 43.9 + T * 40) % H; c.beginPath(); c.arc(x, y, 1.6, 0, 6.3); c.fill(); } }
+  if (G.weather === '晴' && env.day > 0.6 && F.season() === 0) { c.fillStyle = 'rgba(255,190,215,0.8)'; for (let i = 0; i < 14; i++) { const x = (i * 91.3 + T * 22) % W, y = (i * 57.1 + T * 30 + Math.sin(T + i) * 10) % H; c.beginPath(); c.ellipse(x, y, 3.5, 2, i, 0, 6.3); c.fill(); } }
+  /* 夜襲時的暗角 */
+  if (W3.raidAnim) { const g = c.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.3, W / 2, H / 2, Math.max(W, H) * 0.75); g.addColorStop(0, 'rgba(80,0,0,0)'); g.addColorStop(1, `rgba(90,0,10,${0.35 + Math.sin(T * 4) * 0.08})`); c.fillStyle = g; c.fillRect(0, 0, W, H); }
+  /* 橫幅 */
+  if (W3.ban) { const b = W3.ban; b.t += dt; const a = Math.min(1, (b.dur - b.t) * 2, b.t * 4); if (b.t > b.dur) W3.ban = null; else { c.globalAlpha = Math.max(0, a); c.font = '900 18px "Huninn","Noto Sans TC",sans-serif'; const w = Math.min(W - 24, c.measureText(b.m).width + 40); c.fillStyle = b.col; rr(c, W / 2 - w / 2, H * 0.3 - 22, w, 44, 16); c.fill(); c.fillStyle = '#fff'; c.fillText(b.m, W / 2, H * 0.3); c.globalAlpha = 1; } }
+};
+function rr(c, x, y, w, h, r) { c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath(); }
+
+/* ---------- 點選與鏡頭操作 ---------- */
+W3.pick = function (sx, sy) {
+  for (const g of W3.giftHit || []) if (Math.hypot(g.x - sx, g.y - sy) < 30) return { type: 'gift', id: g.id };
+  let best = null, bd = 46;
+  for (const [id, a] of W3.rab) { if (a.hidden) continue; const s = G3.project([a.x, a.y + (a.kit ? 0.25 : 0.38), a.z]); if (!s) continue; const d = Math.hypot(s[0] - sx, s[1] - sy) - (a.kit ? -6 : 0); if (d < bd) { bd = d; best = { type: 'rabbit', id }; } }
+  for (const [id, a] of W3.dogs) { const s = G3.project([a.x, 0.55, a.z]); if (!s) continue; const d = Math.hypot(s[0] - sx, s[1] - sy); if (d < bd) { bd = d; best = { type: 'dog', id }; } }
+  if (best) return best;
+  W3.huts.forEach((h, i) => { if (G.doors[i]) return; const s = G3.project([HX(i) + 0.42, 1.0, HUTCH_Z + 0.6]); if (s && Math.hypot(s[0] - sx, s[1] - sy) < 55) best = { type: 'door', id: i }; });
+  if (best) return best;
+  for (const [id, d] of W3.dec) { const s = G3.project([d.x, 0.4, d.z]); if (s && Math.hypot(s[0] - sx, s[1] - sy) < 48) return { type: 'decor', id }; }
+  return null;
+};
+W3.bindInput = function () {
+  const el = W3.ov; const P = new Map(); let drag = 0, pinch0 = 0, dist0 = 0, sx = 0, sy = 0, t0 = 0;
+  el.addEventListener('pointerdown', e => { el.setPointerCapture(e.pointerId); P.set(e.pointerId, [e.clientX, e.clientY]); if (P.size === 1) { drag = 0; sx = e.clientX; sy = e.clientY; t0 = performance.now(); } if (P.size === 2) { const [a, b] = [...P.values()]; pinch0 = Math.hypot(a[0] - b[0], a[1] - b[1]); dist0 = W3.cam.dist; } });
+  el.addEventListener('pointermove', e => {
+    if (!P.has(e.pointerId)) return; const prev = P.get(e.pointerId); P.set(e.pointerId, [e.clientX, e.clientY]);
+    if (P.size === 2) { const [a, b] = [...P.values()]; const d = Math.hypot(a[0] - b[0], a[1] - b[1]); if (pinch0) W3.cam.dist = clamp(dist0 * pinch0 / d, 7, 30); drag = 9; return; }
+    const dx = e.clientX - prev[0], dy = e.clientY - prev[1];
+    if (Math.hypot(e.clientX - sx, e.clientY - sy) > 8) drag = 1;
+    if (drag) { W3.cam.yaw -= dx * 0.008; W3.cam.pitch = clamp(W3.cam.pitch + dy * 0.005, 0.35, 1.3); }
+  });
+  const up = e => { const was = P.has(e.pointerId); P.delete(e.pointerId); if (!was) return; if (P.size === 0) { if (!drag && performance.now() - t0 < 500) { const r = el.getBoundingClientRect(); const hit = W3.pick(e.clientX - r.left, e.clientY - r.top); if (W3.onPick) W3.onPick(hit); } pinch0 = 0; } };
+  el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
+  el.addEventListener('wheel', e => { e.preventDefault(); W3.cam.dist = clamp(W3.cam.dist * (1 + Math.sign(e.deltaY) * 0.1), 7, 30); }, { passive: false });
+};
+})();
+
+</script>
+<script>
+/* 介面 v2：標題、主迴圈、頂部狀態、底部面板（工作、農場、兔子、商店、筆記、錯題、成就）、兔子／狗／擺設卡片、
+   答題與模擬考、每日任務、匯出匯入存檔、畫質設定 */
 (function () {
 'use strict';
 const $ = id => document.getElementById(id);
-const cv = $('cv'), cx = cv.getContext('2d');
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-let W = 0, H = 0, DPR = 1;
-const UI = window.UI = { tab: 'work', quiz: null, noteCh: 'c1', t: 0, min: false };
-function resize() { DPR = Math.min(2, devicePixelRatio || 1); W = innerWidth; H = innerHeight; cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR); cx.setTransform(DPR, 0, 0, DPR, 0, 0); layout(); }
-addEventListener('resize', resize);
+let W = innerWidth, H = innerHeight;
+const UI = window.UI = { tab: 'work', quiz: null, noteCh: 'c1', t: 0, min: false, shopCat: 'decor', card: null };
+addEventListener('resize', () => { W = innerWidth; H = innerHeight; layout(); });
 
 /* ---------- 小工具 ---------- */
 let toastT;
-function toast(m) { const t = $('toast'); t.textContent = m; t.style.opacity = 1; clearTimeout(toastT); toastT = setTimeout(() => (t.style.opacity = 0), 1900); }
+function toast(m) { const t = $('toast'); t.textContent = m; t.style.opacity = 1; clearTimeout(toastT); toastT = setTimeout(() => (t.style.opacity = 0), 2000); }
 function feed(m, kind) { const el = document.createElement('div'); el.className = 'fd ' + (kind || ''); el.textContent = m; $('feed').prepend(el); while ($('feed').children.length > 3) $('feed').lastChild.remove(); setTimeout(() => { el.style.opacity = 0; setTimeout(() => el.remove(), 700); }, kind === 'big' ? 6500 : 4500); }
 const AC = window.AudioContext || window.webkitAudioContext; let ac;
 function beep(f, d, ty, v) { try { ac = ac || new AC(); const o = ac.createOscillator(), g = ac.createGain(); o.type = ty || 'sine'; o.frequency.value = f; g.gain.setValueAtTime(v || 0.05, ac.currentTime); g.gain.exponentialRampToValueAtTime(0.0001, ac.currentTime + d); o.connect(g); g.connect(ac.destination); o.start(); o.stop(ac.currentTime + d); } catch (e) { /* 無音效 */ } }
-const SFX = { ok: () => { beep(660, 0.1); setTimeout(() => beep(990, 0.16), 90); }, no: () => beep(200, 0.3, 'triangle'), coin: () => { beep(1200, 0.06, 'square', 0.025); setTimeout(() => beep(1600, 0.08, 'square', 0.025), 60); }, wolf: () => { beep(300, 0.5, 'sawtooth', 0.03); setTimeout(() => beep(420, 0.6, 'sawtooth', 0.025), 300); }, up: () => [523, 659, 784, 1046].forEach((f, i) => setTimeout(() => beep(f, 0.22), i * 110)) };
+const SFX = { ok: () => { beep(660, 0.1); setTimeout(() => beep(990, 0.16), 90); }, no: () => beep(200, 0.3, 'triangle'), coin: () => { beep(1200, 0.06, 'square', 0.025); setTimeout(() => beep(1600, 0.08, 'square', 0.025), 60); }, wolf: () => { beep(300, 0.6, 'sawtooth', 0.03); setTimeout(() => beep(440, 0.8, 'sawtooth', 0.025), 350); }, up: () => [523, 659, 784, 1046].forEach((f, i) => setTimeout(() => beep(f, 0.22), i * 110)), pop: () => beep(880, 0.07, 'sine', 0.04), love: () => [880, 1175].forEach((f, i) => setTimeout(() => beep(f, 0.12, 'sine', 0.04), i * 90)) };
 const meter = (p, col) => `<div class="meter"><i style="width:${U.clamp(p * 100, 0, 100)}%;${col ? 'background:' + col : ''}"></i></div>`;
+const hearts = a => { const l = F.affLv(a); let s = ''; for (let i = 0; i < 5; i++) s += i <= l - 1 || (i === 0 && a >= 10) ? '💗' : '🤍'; return s; };
 function layout() { const top = $('top'); if (!top.hidden) $('feed').style.top = top.getBoundingClientRect().bottom + 6 + 'px'; }
-function viewH() { const b = $('bottom'); return b.hidden ? H : Math.max(160, b.getBoundingClientRect().top + 14); }
+function viewH() { const b = $('bottom'); return b.hidden ? H : Math.max(200, Math.round(b.getBoundingClientRect().top + 16)); }
+function modal(html) { $('mbox').innerHTML = html; $('modal').hidden = false; }
+$('modal').onclick = e => { if (e.target === $('modal') || e.target.dataset.close) $('modal').hidden = true; };
 
 /* ---------- 標題 ---------- */
 function titleScreen() {
   const has = F.peek();
   $('title').hidden = false;
-  $('tbox').innerHTML = `<div style="font-size:44px">🐰🌾🐶</div><h1>兔子農場行政法</h1>
-  <p style="color:var(--mute);font-size:13px">一邊打工答行政法考題賺錢，一邊經營會繁殖的兔子農場。<br>答越難的題目，報酬越高；小心夜裡的野狼！</p>
+  $('tbox').innerHTML = `<div style="font-size:46px">🐰🌷🐶</div><h1>兔子農場行政法</h1>
+  <p style="color:var(--mute);font-size:13px">打工答行政法考題賺錢，經營一座 3D 兔子樂園。<br>每隻兔子都有自己的個性，越寵牠越黏你！</p>
   ${has ? `<button class="btn" id="tCont" style="width:100%;padding:11px;margin-bottom:8px">繼續經營「${esc(has.name)}」<br><small style="font-weight:400">🐰 ${has.rabbits.length} 隻・答對 ${has.quiz.right} 題・第 ${Math.floor(has.day / 28) + 1} 年</small></button>` : ''}
   <div style="margin-top:6px"><input id="tName" maxlength="12" placeholder="幫農場取個名字" value="${has ? '' : '縱谷兔子農場'}"></div>
   <button class="btn ${has ? 'alt' : ''}" id="tNew" style="width:100%;padding:11px">開始新農場</button>
-  <div class="desc" style="margin-top:12px;text-align:left">題庫：行政程序法（總則、行政處分、行政契約、法規命令與行政規則、行政計畫、行政指導、陳情）、行政執行法、行政罰法、訴願與行政訴訟、國家賠償，共 ${Q.ALL.length} 題，皆附法條解析。</div>`;
+  <button class="btn alt s" id="tImp" style="margin-top:8px">📥 匯入存檔</button>
+  <div class="desc" style="margin-top:12px;text-align:left">題庫 ${Q.ALL.length} 題，涵蓋行政程序法、行政執行法、行政罰法、訴願與行政訴訟、國家賠償，皆附法條解析。</div>`;
   if ($('tCont')) $('tCont').onclick = () => { if (F.load()) start(); else toast('讀取失敗'); };
   let arm = 0;
-  $('tNew').onclick = () => { if (has && Date.now() - arm > 3000) { arm = Date.now(); toast('會覆蓋目前的農場，再按一次確認'); return; } F.newGame($('tName').value.trim() || '縱谷兔子農場'); F.save(); start(); };
+  $('tNew').onclick = () => { if (has && Date.now() - arm > 3000) { arm = Date.now(); toast('會覆蓋目前的農場，再按一次確認'); return; } F.newGame($('tName').value.trim() || '縱谷兔子農場'); G.quality = /Mobi|Android|iPhone/i.test(navigator.userAgent) ? 1 : 2; F.save(); start(); };
+  $('tImp').onclick = importBox;
 }
 function start() {
   $('title').hidden = true; $('top').hidden = false; $('bottom').hidden = false;
-  F.ev.length = 0; setSpeed(G.speed ?? 1); UI.quiz = null; UI.tab = 'work'; render(); hud(); layout();
-  if (!G.seenIntro) intro();
+  if (!W3.ok && !W3.init($('cv'), $('ov'))) { $('nogl').hidden = false; }
+  W3.onPick = onPick;
+  F.ev.length = 0; setSpeed(G.speed ?? 1); UI.quiz = null; UI.tab = 'work'; closeCard(); render(); hud(); layout();
+  if (!G.seenIntro) intro(); else if (!G.seenV2) introV2();
 }
 function intro() {
   modal(`<h2>🐰 歡迎來到${esc(G.name)}</h2>
-  <p>你是一位兔子農場主人，同時在法律事務所打工。<b>答對行政法考題</b>就能領到工錢，題目越難（⭐⭐⭐）報酬越高，連續答對還有加成。</p>
-  <p>🌾 兔子每天吃<b>牧草</b>和<b>飼料</b>，吃完會餓、會生病。<br>🏠 每座兔籠住 10 隻，太擠就不繁殖。<br>🐺 晚上森林裡的<b>野狼</b>會來偷兔子，雇用<b>看門狗</b>、升級<b>圍籬</b>來防守，但狗也可能在搏鬥中犧牲。<br>🦅 白天老鷹會抓幼兔，可裝防鳥網。<br>💗 公母兔成年（8 天）後會自己繁殖。</p>
-  <p>工作從<b>第一章</b>開始：本章答對過的題目達 60%，就開放下一章。答錯的題目會進「📕 錯題本」，可以反覆練習。</p>
-  <div class="acts"><button class="btn" data-close="1">開始打工！</button></div>`);
-  G.seenIntro = 1;
+  <p>你是兔子農場的主人，同時在法律事務所打工。<b>答對行政法考題</b>就能領工錢，題目越難（⭐⭐⭐）報酬越高。</p>
+  <p>🐰 每隻兔子都有<b>個性</b>（貪吃、活力、害羞、黏人……），<b>點一下兔子</b>就能摸摸、餵零食、梳毛、陪玩、抱抱，好感度高了牠會送你小禮物 🍀。<br>🏠 到商店買<b>擺設</b>，兔子會跑去玩、去躲、去啃，喜歡的擺設會讓牠超開心。<br>🐶 看門狗在<b>庭院</b>巡邏，晚上會和野狼打架。一般的狼只會讓狗受傷；滿月夜可能出現 <b>S 級狼人</b>，狗狗才有危險。兔子永遠不會被抓走，但狼可能抓壞兔籠的門。</p>
+  <p>📋 每天有 3 個<b>每日任務</b>，完成拿獎金和農場經驗；農場升級會解鎖更多擺設。</p>
+  <p>工作從<b>第一章</b>開始：本章答對過 60% 的題目就開放下一章。</p>
+  <div class="acts"><button class="btn" data-close="1">開始！</button></div>`);
+  G.seenIntro = 1; G.seenV2 = 1;
 }
-function modal(html) { $('mbox').innerHTML = html; $('modal').hidden = false; }
-$('modal').onclick = e => { if (e.target === $('modal') || e.target.dataset.close) $('modal').hidden = true; };
+function introV2() {
+  modal(`<h2>✨ 農場大改版！</h2><p>你的答題紀錄、金錢和兔子都保留下來了。</p>
+  <p>・全新 3D 農場，兔子毛茸茸的會跳、會理毛、會翻肚睡覺<br>・每隻兔子都有<b>個性、心情、好感度</b>，點兔子就能互動<br>・商店新增 16 種<b>擺設</b>，兔子會開心地使用<br>・看門狗住在<b>庭院</b>，夜裡會和狼打鬥；<b>兔子不會再被抓走</b><br>・每日任務、農場等級、兔子圖鑑、稀有花色<br>・「🏆 成就」頁可以<b>匯出存檔</b>備份</p>
+  <div class="acts"><button class="btn" data-close="1">好期待！</button></div>`);
+  G.seenV2 = 1;
+}
 
 /* ---------- 速度 ---------- */
 function setSpeed(s) { G.speed = s; document.querySelectorAll('#speed button').forEach(b => b.classList.toggle('on', +b.dataset.s === s)); }
 $('speed').onclick = e => { const b = e.target.closest('button'); if (b) { setSpeed(+b.dataset.s); toast(['⏸ 農場時間暫停', '▶ 正常速度', '⏩ 兩倍速度'][+b.dataset.s]); } };
 
 /* ---------- 主迴圈 ---------- */
-let last = performance.now(), acc = 0, hudT = 0, saveT = 0;
+let last = performance.now(), acc = 0, hudT = 0, saveT = 0, curVH = 0;
 function loop(now) {
-  const dt = Math.min(0.1, (now - last) / 1000); last = now; UI.t += dt;
+  const dt = Math.min(0.06, (now - last) / 1000); last = now; UI.t += dt;
   if (G.rabbits && $('title').hidden) {
-    acc += dt * F.MIN_PER_SEC * (G.speed || 0);
-    const n = Math.floor(acc); acc -= n; if (n) F.tick(Math.min(n, 120));
+    if (!F.hold) { acc += dt * F.MIN_PER_SEC * (G.speed || 0); const n = Math.floor(acc); acc -= n; if (n) F.tick(Math.min(n, 120)); }
     events();
     hudT -= dt; if (hudT <= 0) { hudT = 0.3; hud(); }
     saveT += dt; if (saveT > 20) { saveT = 0; F.save(); }
     const vh = viewH();
-    cx.clearRect(0, 0, W, H);
-    A.draw(cx, W, vh, UI.t, {});
-  } else { cx.clearRect(0, 0, W, H); }
+    if (vh !== curVH) { curVH = vh; $('cv').style.height = $('ov').style.height = vh + 'px'; }
+    if (W3.ok) W3.frame(dt, UI.t, W, vh);
+    if (UI.card) cardPos();
+  }
   requestAnimationFrame(loop);
 }
 function events() {
   for (const e of F.ev.splice(0)) {
     if (e.k === 'log') feed(e.m, e.kind);
-    else if (e.k === 'raid') { A.raid(Object.assign({ repelled: e.repelled }, e.r), W, viewH()); SFX.wolf(); if (UI.tab === 'farm' && !UI.quiz) render(); }
-    else if (e.k === 'eagle') A.eagleSwoop(W, viewH());
-    else if (e.k === 'birth') A.hearts(W, viewH(), e.n);
+    else if (e.k === 'raid') { closeCard(); if (W3.ok) { W3.startRaid(e.r); if (!UI.quiz) { UI.raidMin = !UI.min; UI.min = true; render(); } } else F.ev.push({ k: 'raidEnd', r: e.r }); SFX.wolf(); }
+    else if (e.k === 'raidEnd') { if (UI.raidMin) { UI.raidMin = false; UI.min = false; } if (!UI.quiz) render(); }
+    else if (e.k === 'eagle') toast('🦅 老鷹在天上盤旋！');
+    else if (e.k === 'birth') { toast(`🐣 生了 ${e.n} 隻小兔子！`); SFX.love(); }
     else if (e.k === 'alert') toast(e.m);
     else if (e.k === 'ach') { SFX.up(); toast(`🏆 ${e.a.n}`); }
+    else if (e.k === 'levelup') { SFX.up(); toast(`🎉 農場升到 ${e.lv} 級！`); }
+    else if (e.k === 'questDone') { SFX.pop(); toast(`📋 任務完成：${e.q.n}（去領獎勵）`); }
+    else if (e.k === 'gift') { /* 世界裡會出現禮物圖示 */ }
     else if (e.k === 'day') { F.save(); if (!UI.quiz && UI.tab !== 'note') render(); }
   }
 }
@@ -1419,15 +2307,18 @@ const WX = { 晴: '☀️ 晴', 陰: '☁️ 陰', 雨: '🌧️ 雨', 寒流: '
 function hud() {
   if (!G.rabbits) return;
   $('money').textContent = U.fmt(G.money);
-  $('clock').textContent = `${U.hm(G.min)} ${F.isNight() ? '🌙' : ''}`;
+  $('clock').textContent = `${U.hm(G.min)} ${F.isNight() ? (F.fullMoon() ? '🌕' : '🌙') : ''}`;
   $('date').textContent = F.dateStr();
   $('cWx').textContent = WX[G.weather] || G.weather;
-  $('rab').textContent = `${G.rabbits.length}/${F.cap()}`; $('cRab').classList.toggle('warn', G.rabbits.length > F.cap());
-  $('dog').textContent = G.dogs.length;
+  const sm = F.summary();
+  $('rab').textContent = `${G.rabbits.length}/${F.cap()} ${F.moodIc(sm.mood)}`; $('cRab').classList.toggle('warn', G.rabbits.length >= F.cap());
+  $('dog').textContent = G.dogs.length; $('cDog').classList.toggle('warn', G.dogs.some(d => d.hp < 30));
   const nd = F.dailyNeed();
   $('hay').textContent = `${G.hay.toFixed(1)}kg`; $('cHay').classList.toggle('warn', G.hay < nd.hay * 1.2);
   $('pel').textContent = `${G.pel.toFixed(1)}kg`; $('cPel').classList.toggle('warn', G.pel < nd.pel * 1.2);
+  $('lv').textContent = G.level; $('lvBar').style.width = `${Math.min(100, G.xp / F.xpNeed(G.level) * 100)}%`;
   const wn = Q.wrongList().length; $('wDot').hidden = !wn; $('wDot').textContent = wn;
+  const qn = G.quests ? G.quests.list.filter(q => q.prog >= q.goal && !q.claimed).length : 0; $('fDot').hidden = !(qn || G.gifts.length || G.doors.some(d => !d)); $('fDot').textContent = qn + G.gifts.length || '!';
   if (UI.quiz && UI.quiz.mode === 'exam') { const el = $('exTimer'); if (el) { const left = Math.max(0, UI.quiz.end - Date.now()); el.textContent = `${Math.floor(left / 60000)}:${String(Math.floor(left / 1000) % 60).padStart(2, '0')}`; if (!left && !UI.quiz.done) finishExam(); } }
 }
 
@@ -1440,19 +2331,21 @@ function render() {
   $('bottom').classList.toggle('quiz', !!UI.quiz); $('bottom').classList.toggle('min', UI.min);
   const sh = $('sheet'); const keep = sh.scrollTop;
   sh.innerHTML = UI.quiz ? quizView() : PANEL[UI.tab]();
-  if (!UI.quiz) sh.scrollTop = keep; else sh.scrollTop = 0;
+  sh.scrollTop = UI.quiz ? 0 : keep;
 }
-
-/* ---------- 工作 ---------- */
 const stars = d => '⭐'.repeat(d);
+function questsHTML() {
+  if (!G.quests) return '';
+  return `<div class="card"><div class="row"><b>📋 每日任務</b><small class="desc">每項獎勵 $${F.qReward()}＋經驗 40</small></div>${G.quests.list.map((q, i) => `<div class="qrow"><div style="flex:1"><div>${q.claimed ? '✅ ' : ''}${esc(q.n)}</div>${meter(q.prog / q.goal, q.prog >= q.goal ? '#e2a83a' : '')}</div><button class="btn s ${q.claimed ? 'alt' : 'gold'}" data-claim="${i}" ${q.prog < q.goal || q.claimed ? 'disabled' : ''}>${q.claimed ? '已領' : `${q.prog}/${q.goal}`}</button></div>`).join('')}</div>`;
+}
 const PANEL = {
   work() {
     const r = Q.rank(), nx = Q.nextRank(), z = G.quiz, wn = Q.wrongList().length;
     let h = `<h3>💼 打工答題 <small>${esc(r.n)}・報酬 ×${r.mul}</small></h3>`;
     h += `<div class="card"><div class="row"><span>累計答對 <b>${z.right}</b> 題・正確率 ${z.right + z.wrong ? Math.round(z.right / (z.right + z.wrong) * 100) : 0}%</span><span class="tag y">🔥 連對 ${z.streak}</span></div>${nx ? `<div class="desc">再答對 ${nx.need - z.right} 題升任「${esc(nx.n)}」（報酬 ×${nx.mul}）</div>${meter((z.right - r.need) / (nx.need - r.need))}` : '<div class="desc">已是最高職稱！</div>'}
     <div class="desc">報酬：⭐ $${Q.PAY[1]}・⭐⭐ $${Q.PAY[2]}・⭐⭐⭐ $${Q.PAY[3]}，再乘職稱倍率；連續答對每題 +8%（最多 +80%）。</div>
-    <div class="acts"><button class="btn blue s" data-exam="1" ${z.unlocked.length < 2 ? 'disabled' : ''}>📝 模擬考 20 題</button><button class="btn s ${wn ? 'red' : 'alt'}" data-review="1" ${wn ? '' : 'disabled'}>📕 錯題複習（${wn}）</button></div>
-    ${z.unlocked.length < 2 ? '<div class="desc">開放第二章後可參加模擬考。</div>' : ''}</div>`;
+    <div class="acts"><button class="btn blue s" data-exam="1" ${z.unlocked.length < 2 ? 'disabled' : ''}>📝 模擬考 20 題</button><button class="btn s ${wn ? 'red' : 'alt'}" data-review="1" ${wn ? '' : 'disabled'}>📕 錯題複習（${wn}）</button></div></div>`;
+    h += questsHTML();
     CH.forEach((c, i) => {
       const un = Q.unlocked(c.id), m = Q.mastery(c.id), acc = Q.acc(c.id);
       h += `<div class="card ${un ? 'tap' : 'lock'}" ${un ? `data-ch="${c.id}"` : ''}><div class="row"><b>${un ? '' : '🔒 '}第 ${i + 1} 章　${esc(c.n)}</b><small style="color:var(--mute)">${esc(c.law)}</small></div>
@@ -1462,33 +2355,51 @@ const PANEL = {
   },
   farm() {
     const s = F.summary(), nd = F.dailyNeed(), cap = F.cap();
-    const days = (v, n) => (n > 0 ? `約可吃 ${(v / n).toFixed(1)} 天` : '—');
-    let h = `<h3>🐰 ${esc(G.name)} <small>${F.dateStr()}</small></h3>`;
+    const days = (v, n) => (n > 0 ? `約 ${(v / n).toFixed(1)} 天` : '—');
+    let h = `<h3>🏡 ${esc(G.name)} <small>Lv ${G.level}・${F.dateStr()}</small></h3>`;
+    h += questsHTML();
+    if (G.gifts.length) h += `<div class="card"><div class="row"><b>🎁 兔子送你的禮物 ×${G.gifts.length}</b><button class="btn s gold" data-gifts="1">全部收下 $${G.gifts.reduce((a, g) => a + g.v, 0)}</button></div><div class="desc">也可以直接點農場裡閃閃發亮的 🍀。</div></div>`;
     h += `<div class="grid2">
-      <div class="stat">兔子總數<b>${s.total} / ${cap}</b>${s.total > cap ? '<span class="tag r">太擠了</span>' : ''}</div>
-      <div class="stat">成年公兔 ♂<b>${s.m}</b></div><div class="stat">成年母兔 ♀<b>${s.f}</b></div>
-      <div class="stat">懷孕中<b>${s.preg}</b></div><div class="stat">幼兔<b>${s.kit}</b></div>
-      <div class="stat">生病<b style="${s.sick ? 'color:var(--red)' : ''}">${s.sick}</b></div></div>`;
-    h += `<div class="card" style="margin-top:8px"><div class="kv"><span>🌾 牧草</span><b>${G.hay.toFixed(1)} kg（${days(G.hay, nd.hay)}）</b></div><div class="kv"><span>🥕 兔飼料</span><b>${G.pel.toFixed(1)} kg（${days(G.pel, nd.pel)}）</b></div><div class="kv"><span>💊 藥品</span><b>${G.med} 份</b></div><div class="kv"><span>每日消耗</span><b>牧草 ${nd.hay.toFixed(1)}kg・飼料 ${nd.pel.toFixed(1)}kg</b></div>
+      <div class="stat">兔子<b>${s.total} / ${cap}</b></div><div class="stat">平均心情<b>${F.moodIc(s.mood)} ${Math.round(s.mood)}</b></div><div class="stat">開心的兔子<b>${s.happy}</b></div>
+      <div class="stat">懷孕中<b>${s.preg}</b></div><div class="stat">幼兔<b>${s.kit}</b></div><div class="stat">生病<b style="${s.sick ? 'color:var(--red)' : ''}">${s.sick}</b></div></div>`;
+    h += `<div class="card" style="margin-top:8px"><div class="kv"><span>🌾 牧草</span><b>${G.hay.toFixed(1)} kg（${days(G.hay, nd.hay)}）</b></div><div class="kv"><span>🥕 兔飼料</span><b>${G.pel.toFixed(1)} kg（${days(G.pel, nd.pel)}）</b></div><div class="kv"><span>💊 藥品</span><b>${G.med} 份</b></div>
       <div class="kv"><span>🧹 兔舍衛生</span><b>${Math.round(G.clean)}%</b></div>${meter(G.clean / 100, G.clean < 30 ? '#c8402a' : G.clean < 60 ? '#e2c45a' : '')}
-      <div class="acts"><button class="btn s" data-clean="1">🧹 打掃兔舍 $${F.cleanCost()}</button><button class="btn s alt" data-go="shop">🛒 去買飼料</button></div></div>`;
-    h += `<div class="card"><div class="row"><b>🛡️ 防衛</b><span class="desc">${F.FENCE[G.fence].n}${G.net ? '・防鳥網' : ''}</span></div>`;
-    if (!G.dogs.length) h += '<div class="desc">還沒有看門狗！夜裡野狼來時只能任牠叼走兔子。</div>';
-    for (const d of G.dogs) h += `<div class="kv"><span>🐶 ${esc(d.nm)}　Lv${d.lv}・攻擊 ${d.atk}${d.hungry ? '・<b style="color:var(--red)">挨餓中</b>' : ''}</span><b>${Math.round(d.hp)}/100</b></div>${meter(d.hp / 100, d.hp < 40 ? '#c8402a' : '')}`;
-    h += `<div class="desc">今晚${F.isNight() && G.wolfHour >= 0 ? '<b style="color:var(--red)">森林傳來狼嚎……</b>' : '還算平靜'}。擊退狼群的狗會累積經驗升級。每隻狗每天狗糧 $${F.DOG_COST}。</div></div>`;
-    const kitN = G.rabbits.filter(r => r.age >= 4 && r.age < F.ADULT).length;
-    h += `<div class="card"><b>💵 出售兔子</b><div class="desc">賣給寵物店與飼養場。懷孕、哺乳中的母兔不賣。</div><div class="acts">
-      <button class="btn s gold" data-sell="m" ${s.m ? '' : 'disabled'}>公兔 $280</button><button class="btn s gold" data-sell="f" ${s.f ? '' : 'disabled'}>母兔 $280</button>
-      <button class="btn s gold" data-sell="kit" ${kitN ? '' : 'disabled'}>幼兔 $180（${kitN}）</button><button class="btn s gold" data-sell="old" ${s.old ? '' : 'disabled'}>老兔 $120（${s.old}）</button></div></div>`;
+      <div class="acts"><button class="btn s" data-clean="1">🧹 打掃兔舍 $${F.cleanCost()}</button><button class="btn s alt" data-go="shop" data-cat="supply">🛒 買飼料</button></div></div>`;
+    const broken = G.doors.filter(d => !d).length;
+    h += `<div class="card"><div class="row"><b>🏠 兔籠 ${G.hutch} 座</b><span class="desc">${broken ? `<b style="color:var(--red)">${broken} 扇門壞了</b>` : '門都完好'}</span></div>${broken ? `<div class="acts"><button class="btn s red" data-repair="1">🔨 修理一扇門 $250</button></div><div class="desc">門壞掉的兔籠只能住 5 隻，兔子也會不安。</div>` : ''}</div>`;
+    h += `<div class="card"><div class="row"><b>🛡️ 庭院守衛</b><span class="desc">${F.FENCE[G.fence].n}${G.net ? '・防鳥網' : ''}</span></div>`;
+    if (!G.dogs.length) h += '<div class="desc">還沒有看門狗！狼來時會直接衝進兔舍抓壞門。</div>';
+    for (const d of G.dogs) h += `<div class="kv tap" data-dog="${d.id}"><span>🐶 ${esc(d.nm)}　Lv${d.lv}・攻擊 ${d.atk}・勝 ${d.wins}${d.hungry ? '・<b style="color:var(--red)">挨餓</b>' : ''}</span><b>${Math.round(d.hp)}/100</b></div>${meter(d.hp / 100, d.hp < 40 ? '#c8402a' : '')}`;
+    h += `<div class="desc">${F.fullMoon() ? '🌕 今晚滿月，S 級狼人可能出沒！' : '一般野狼只會讓狗受傷；滿月夜的 S 級狼人才會叼走狗。'}受傷的狗戰力會下降，記得找獸醫。</div></div>`;
     h += `<div class="card"><b>📜 農場日誌</b>${G.log.slice(-25).reverse().map(l => `<div class="log ${l.kind || ''}">第${l.d + 1}天 ${U.hm(l.t)}　${esc(l.m)}</div>`).join('')}</div>`;
     return h;
   },
+  bunny() {
+    const sort = UI.bSort || 'aff';
+    const L = G.rabbits.slice().sort((a, b) => sort === 'aff' ? b.aff - a.aff : sort === 'mood' ? a.mood - b.mood : b.age - a.age);
+    let h = `<h3>🐰 我的兔子 <small>${G.rabbits.length} 隻・圖鑑 ${Object.keys(G.album).length} 種</small></h3><div class="acts" style="margin-bottom:6px">${[['aff', '好感度'], ['mood', '心情差的先'], ['age', '年紀']].map(([k, n]) => `<button class="btn s ${sort === k ? '' : 'alt'}" data-bsort="${k}">${n}</button>`).join('')}<button class="btn s alt" data-album="1">📔 圖鑑</button></div>`;
+    for (const r of L) {
+      const P = F.PERS[r.pers];
+      h += `<div class="card tap bunny" data-rab="${r.id}"><div class="row"><b>${r.s === 'm' ? '♂' : '♀'} ${esc(r.nm)} <span class="tag">${P.ic} ${P.n}</span></b><span>${F.moodIc(r.mood)}</span></div>
+      <div class="desc">${hearts(r.aff)} ${F.AFF_LV[F.affLv(r.aff)]}・${r.age < F.ADULT ? '幼兔' : r.age > F.OLD ? '長老兔' : '成兔'} ${r.age} 天・${esc(F.coatName(r.coat))}${r.preg ? '・🤰 懷孕' : ''}${r.nurse ? '・🍼 哺乳' : ''}${r.sick ? '・🤒 生病' : ''}${Object.keys(r.care).length ? `・今天互動 ${Object.keys(r.care).length}/5` : ''}</div></div>`;
+    }
+    return h;
+  },
   shop() {
-    let h = `<h3>🛒 農場商店 <small>存款 $${U.fmt(G.money)}</small></h3>`;
-    for (const it of F.SHOP) {
-      const p = F.price(it), can = !it.can || it.can();
+    const cats = [['decor', '🎀 擺設'], ['supply', '🌾 飼料用品'], ['animal', '🐾 動物'], ['facility', '🔧 設施']];
+    let h = `<h3>🛒 商店 <small>存款 $${U.fmt(G.money)}・擺設 ${G.decor.length}/${F.SLOTS}</small></h3><div class="acts" style="margin-bottom:8px">${cats.map(([k, n]) => `<button class="btn s ${UI.shopCat === k ? '' : 'alt'}" data-cat="${k}">${n}</button>`).join('')}</div>`;
+    if (UI.shopCat === 'decor') {
+      for (const d of F.DECOR) {
+        const lock = G.level < d.lv, owned = G.decor.filter(x => x.t === d.t).length;
+        const fans = Object.keys(F.PERS).filter(p => F.PERS[p].likes.includes(d.t)).map(p => F.PERS[p].ic + F.PERS[p].n).join('、');
+        h += `<div class="card ${lock ? 'lock' : ''}"><div class="row"><b>${d.ic} ${esc(d.n)}${owned ? ` <span class="tag g">已有 ${owned}</span>` : ''}</b><button class="btn s gold" data-decor="${d.t}" ${lock || G.money < d.price ? 'disabled' : ''}>${lock ? `🔒 Lv${d.lv}` : '$' + U.fmt(d.price)}</button></div><div class="desc">${esc(d.d)}${fans ? `<br>最喜歡的個性：${esc(fans)}` : ''}・魅力 +${d.ap}</div></div>`;
+      }
+      return h;
+    }
+    for (const it of F.SHOP.filter(x => x.cat === UI.shopCat)) {
+      const p = F.price(it), can = !it.can || it.can(), lock = it.lv && G.level < it.lv;
       const name = it.id === 'fence' ? (G.fence < 3 ? `升級為「${F.FENCE[G.fence + 1].n}」` : '圍籬已是最高級') : it.n;
-      h += `<div class="card"><div class="row"><b>${it.ic} ${esc(name)}</b><button class="btn s gold" data-buy="${it.id}" ${!can || G.money < p ? 'disabled' : ''}>${can ? '$' + U.fmt(p) : it.id === 'net' ? '已裝' : '—'}</button></div><div class="desc">${esc(it.d)}${it.id === 'fence' ? `（目前：${F.FENCE[G.fence].n}）` : ''}${it.id === 'hutch' ? `（目前 ${G.hutch} 座、容量 ${F.cap()}）` : ''}</div></div>`;
+      h += `<div class="card ${lock ? 'lock' : ''}"><div class="row"><b>${it.ic} ${esc(name)}</b><button class="btn s gold" data-buy="${it.id}" ${!can || lock || G.money < p ? 'disabled' : ''}>${lock ? `🔒 Lv${it.lv}` : can ? '$' + U.fmt(p) : '—'}</button></div><div class="desc">${esc(it.d)}${it.id === 'fence' ? `（目前：${F.FENCE[G.fence].n}）` : ''}${it.id === 'hutch' ? `（目前 ${G.hutch} 座、容量 ${F.cap()}）` : ''}</div></div>`;
     }
     return h;
   },
@@ -1510,24 +2421,72 @@ const PANEL = {
   },
   me() {
     const z = G.quiz, st = G.stats, r = Q.rank();
-    let h = `<h3>🏆 成就與紀錄 <small>${esc(r.n)}</small></h3><div class="grid2">
-      <div class="stat">答對題數<b>${z.right}</b></div><div class="stat">答錯題數<b>${z.wrong}</b></div><div class="stat">最高連對<b>${z.best}</b></div>
-      <div class="stat">工作收入<b>$${U.fmt(z.earned)}</b></div><div class="stat">模擬考最高<b>${z.exams.length ? Math.max(...z.exams.map(e => e.score)) : '—'}</b></div><div class="stat">開放章節<b>${z.unlocked.length}/${CH.length}</b></div>
-      <div class="stat">出生兔子<b>${st.born}</b></div><div class="stat">最多同時<b>${st.maxRabbits}</b></div><div class="stat">賣出<b>${st.sold}（$${U.fmt(st.soldMoney)}）</b></div>
-      <div class="stat">被狼叼走<b>${st.lostWolf}</b></div><div class="stat">擊退狼群<b>${st.repel}/${st.attacks}</b></div><div class="stat">犧牲的狗<b>${st.dogLost}</b></div>
-      <div class="stat">病死<b>${st.lostSick}</b></div><div class="stat">餓死<b>${st.lostHunger}</b></div><div class="stat">被老鷹抓<b>${st.lostEagle}</b></div></div>`;
+    let h = `<h3>🏆 成就與紀錄 <small>${esc(r.n)}・農場 Lv ${G.level}</small></h3><div class="grid2">
+      <div class="stat">答對題數<b>${z.right}</b></div><div class="stat">最高連對<b>${z.best}</b></div><div class="stat">工作收入<b>$${U.fmt(z.earned)}</b></div>
+      <div class="stat">模擬考最高<b>${z.exams.length ? Math.max(...z.exams.map(e => e.score)) : '—'}</b></div><div class="stat">開放章節<b>${z.unlocked.length}/${CH.length}</b></div><div class="stat">兔子圖鑑<b>${Object.keys(G.album).length}</b></div>
+      <div class="stat">出生兔子<b>${st.born}</b></div><div class="stat">互動次數<b>${st.pets}</b></div><div class="stat">收到禮物<b>${st.gifts}</b></div>
+      <div class="stat">擊退狼群<b>${st.repel}/${st.attacks}</b></div><div class="stat">擊退狼人<b>${st.sWin}/${st.sAttack}</b></div><div class="stat">犧牲的狗<b>${st.dogLost}</b></div></div>`;
     h += '<div style="margin:10px 0 6px;font-weight:700">成就</div>';
     for (const a of F.ACH) h += `<div class="card ach ${G.ach[a.id] ? '' : 'off'}"><i>${G.ach[a.id] ? '🏆' : '🔒'}</i><div><b>${esc(a.n)}</b><div class="desc">${esc(a.d)}${G.ach[a.id] ? `・第 ${G.ach[a.id]} 天達成` : ''}</div></div></div>`;
-    if (z.exams.length) h += `<div style="margin:10px 0 6px;font-weight:700">模擬考紀錄</div>` + z.exams.slice(-10).reverse().map(e => `<div class="kv"><span>第 ${e.day + 1} 天・${e.n} 題</span><b style="color:${e.score >= 60 ? 'var(--ok)' : 'var(--red)'}">${e.score} 分</b></div>`).join('');
-    h += `<div class="acts" style="margin-top:12px"><button class="btn s" data-save="1">💾 存檔</button><button class="btn s alt" data-intro="1">❓ 玩法說明</button><button class="btn s alt" data-title="1">回標題</button></div><div class="desc">自動存檔在這台裝置的瀏覽器（另有一份備份）。</div>`;
+    h += `<div style="margin:10px 0 6px;font-weight:700">設定</div><div class="acts">畫質：${['低（最順）', '中', '高（毛茸茸）'].map((n, i) => `<button class="btn s ${G.quality === i ? '' : 'alt'}" data-q="${i}">${n}</button>`).join('')}</div>
+    <div class="acts" style="margin-top:8px"><button class="btn s" data-save="1">💾 存檔</button><button class="btn s blue" data-export="1">📤 匯出存檔</button><button class="btn s alt" data-import="1">📥 匯入存檔</button><button class="btn s alt" data-intro="1">❓ 玩法</button><button class="btn s alt" data-title="1">回標題</button></div>
+    <div class="desc">存檔在這台裝置的瀏覽器裡（另有備份）。換手機或清除資料前，先「匯出存檔」把那串文字保存起來。</div>`;
     return h;
   },
 };
 
+/* ---------- 卡片：兔子／狗／擺設 ---------- */
+function onPick(hit) {
+  if (UI.quiz && UI.quiz.mode === 'exam' && !UI.quiz.done) return;
+  if (!hit) { closeCard(); return; }
+  if (hit.type === 'gift') { const v = F.collectGift(hit.id); if (v) { SFX.coin(); toast(`🎁 收下禮物 +$${v}`); hud(); } return; }
+  if (hit.type === 'door') { modal(`<h2>🔨 兔籠的門壞了</h2><p>被野狼抓壞的門，修好兔子才會安心。</p><div class="acts"><button class="btn red" id="mRep">修理 $250</button><button class="btn alt" data-close="1">等等</button></div>`); $('mRep').onclick = () => { const r = F.buy('repair'); toast(r === 'ok' ? '修好了！' : '錢不夠'); $('modal').hidden = true; }; return; }
+  UI.card = hit; W3.sel = hit.type === 'decor' ? null : hit; if (!UI.quiz) { UI.min = true; render(); } const ra = hit.type === 'rabbit' && W3.rab.get(hit.id); if (ra) ra.t = 0; renderCard(); SFX.pop();
+}
+function closeCard() { const was = UI.card; UI.card = null; W3.sel = null; $('card').hidden = true; if (was && UI.min && !UI.quiz) { UI.min = false; render(); } }
+function cardPos() { $('card').style.bottom = (H - viewH() + 6) + 'px'; }
+function renderCard() {
+  const c = UI.card, el = $('card');
+  if (!c) { el.hidden = true; return; }
+  let h = '';
+  if (c.type === 'rabbit') {
+    const r = G.rabbits.find(q => q.id === c.id); if (!r) return closeCard();
+    const P = F.PERS[r.pers];
+    h = `<div class="row"><b class="cname" data-rename="1">${r.s === 'm' ? '♂' : '♀'} ${esc(r.nm)} ✏️</b><button class="x" data-cclose="1">✕</button></div>
+    <div><span class="tag">${P.ic} ${P.n}</span><span class="tag g">${esc(F.coatName(r.coat))}</span><span class="tag y">${r.age < F.ADULT ? '幼兔' : r.age > F.OLD ? '長老兔' : '成兔'} ${r.age} 天</span>${r.preg ? '<span class="tag r">🤰 懷孕</span>' : ''}${r.nurse ? '<span class="tag r">🍼 哺乳</span>' : ''}${r.sick ? '<span class="tag r">🤒 生病</span>' : ''}</div>
+    <div class="desc">${esc(P.d)}</div>
+    <div class="row" style="margin-top:4px"><span>好感 ${hearts(r.aff)} <small>${F.AFF_LV[F.affLv(r.aff)]} ${Math.round(r.aff)}</small></span><span>心情 ${F.moodIc(r.mood)} ${Math.round(r.mood)}</span></div>${meter(r.mood / 100, r.mood < 40 ? '#c8402a' : '#e88aa8')}
+    <div class="acts">${Object.entries(F.ACTS).map(([k, A]) => `<button class="btn s ${r.care[k] ? 'alt' : ''}" data-act="${k}" ${r.care[k] ? 'disabled' : ''}>${A.ic} ${A.n}${A.cost ? ` $${A.cost}` : ''}</button>`).join('')}</div>
+    <div class="acts"><button class="btn s alt" data-sellr="1" ${r.preg || r.nurse || !F.sellPrice(r) ? 'disabled' : ''}>🏡 送養（得 $${F.sellPrice(r)}）</button></div>`;
+  } else if (c.type === 'dog') {
+    const d = G.dogs.find(q => q.id === c.id); if (!d) return closeCard();
+    h = `<div class="row"><b>🐶 ${esc(d.nm)}　Lv${d.lv}</b><button class="x" data-cclose="1">✕</button></div><div class="desc">攻擊 ${d.atk}・戰績 ${d.wins} 勝・經驗 ${d.xp}/${d.lv * 3}${d.hungry ? '・挨餓中' : ''}</div>
+    <div class="row"><span>體力</span><b>${Math.round(d.hp)}/100</b></div>${meter(d.hp / 100, d.hp < 40 ? '#c8402a' : '')}
+    <div class="acts"><button class="btn s" data-dact="pet" ${d.care.pet ? 'disabled' : ''}>🤚 摸摸</button><button class="btn s blue" data-dact="train" ${d.care.train ? 'disabled' : ''}>🏋️ 訓練 $300（攻擊+1）</button><button class="btn s alt" data-buy="vet" ${G.dogs.some(x => x.hp < 100) ? '' : 'disabled'}>🩺 治療所有狗 $300</button></div>`;
+  } else if (c.type === 'decor') {
+    const it = G.decor.find(q => q.id === c.id); if (!it) return closeCard();
+    const D = F.DEC[it.t], fans = G.rabbits.filter(r => F.PERS[r.pers].likes.includes(it.t));
+    h = `<div class="row"><b>${D.ic} ${esc(D.n)}</b><button class="x" data-cclose="1">✕</button></div><div class="desc">${esc(D.d)}</div><div class="desc">💗 最喜歡它的兔子：${fans.length ? fans.slice(0, 8).map(r => esc(r.nm)).join('、') + (fans.length > 8 ? '…' : '') : '還沒有'}</div>
+    <div class="acts"><button class="btn s alt" data-undecor="${it.id}">收起（退 $${Math.round(D.price / 2)}）</button></div>`;
+  }
+  el.innerHTML = h; el.hidden = false; cardPos();
+}
+$('card').onclick = e => {
+  const b = e.target.closest('button,[data-rename]'); if (!b) return;
+  const d = b.dataset, c = UI.card;
+  if (d.cclose) return closeCard();
+  if (d.rename) { const r = G.rabbits.find(q => q.id === c.id); const nm = prompt('幫兔子取個新名字（最多 8 字）', r.nm); if (nm) { F.rename(r, nm); renderCard(); } return; }
+  if (d.act) { const r = G.rabbits.find(q => q.id === c.id); const res = F.interact(r, d.act); if (!res.ok) { toast(res.msg || '不行喔'); return; } W3.react(r.id, res.react); res.react === 'run' ? SFX.no() : SFX.love(); toast(res.msg); renderCard(); hud(); return; }
+  if (d.sellr) { const r = G.rabbits.find(q => q.id === c.id); if (UI.sellArm !== r.id) { UI.sellArm = r.id; toast(`確定讓「${r.nm}」去新家嗎？再按一次確認`); return; } UI.sellArm = 0; const p = F.sellOne(r.id); if (p > 0) { SFX.coin(); toast(`「${r.nm}」去了新家 +$${p}`); } closeCard(); hud(); return; }
+  if (d.dact) { const g = G.dogs.find(q => q.id === c.id); const res = F.dogInteract(g, d.dact); toast(res.msg); if (res.ok) SFX.pop(); renderCard(); hud(); return; }
+  if (d.buy) { const r = F.buy(d.buy); toast(r === 'ok' ? '治療完成！' : '錢不夠'); renderCard(); return; }
+  if (d.undecor) { F.removeDecor(+d.undecor); closeCard(); hud(); return; }
+};
+
 /* ---------- 答題 ---------- */
-function startWork(cid) { UI.quiz = { mode: 'work', ch: cid, n: 0, right: 0, earn: 0 }; nextQ(); }
-function startReview() { const L = Q.wrongList(); if (!L.length) return toast('沒有錯題'); UI.quiz = { mode: 'review', list: L.map(q => q.id).sort(() => Math.random() - 0.5), n: 0, right: 0, earn: 0 }; nextQ(); }
-function startExam() { const list = Q.makeExam(20); UI.quiz = { mode: 'exam', list: list.map(q => q.id), i: 0, picks: [], pres: list.map(q => Q.present(q)), end: Date.now() + 30 * 60000, n: list.length }; render(); }
+function startWork(cid) { closeCard(); UI.quiz = { mode: 'work', ch: cid, n: 0, right: 0, earn: 0 }; nextQ(); }
+function startReview() { const L = Q.wrongList(); if (!L.length) return toast('沒有錯題'); closeCard(); UI.quiz = { mode: 'review', list: L.map(q => q.id).sort(() => Math.random() - 0.5), n: 0, right: 0, earn: 0 }; nextQ(); }
+function startExam() { closeCard(); const list = Q.makeExam(20); UI.quiz = { mode: 'exam', list: list.map(q => q.id), i: 0, picks: [], pres: list.map(q => Q.present(q)), end: Date.now() + 30 * 60000, n: list.length }; render(); }
 function nextQ() {
   const z = UI.quiz;
   if (z.mode === 'work') z.cur = Q.present(Q.pick(Q.chQs(z.ch)));
@@ -1540,11 +2499,7 @@ function quizView() {
   const { q, opts } = z.cur, c = CH[q.ci];
   let h = `<div class="qhead"><span class="tag ${z.mode === 'review' ? 'r' : 'g'}">${z.mode === 'review' ? '📕 錯題複習' : '💼 ' + esc(c.n)}</span><span class="tag y">${stars(q.d)} ${Q.DIFF[q.d]}</span><span class="tag">💰 $${Q.payFor(q, z.mode)}</span><span class="tag y">🔥 ${G.quiz.streak}</span><span style="flex:1"></span><small style="color:var(--mute)">本次 ${z.right}/${z.n}・$${U.fmt(z.earn)}</small></div>`;
   h += `<div class="qtext">${esc(q.q)}</div>`;
-  opts.forEach((o, i) => {
-    let cls = '';
-    if (z.ans != null) cls = o.ok ? 'ok' : i === z.ans ? 'no' : '';
-    h += `<button class="opt ${cls}" data-opt="${i}" ${z.ans != null ? 'disabled' : ''}><span class="k">${'ABCD'[i]}</span><span>${esc(o.t)}</span></button>`;
-  });
+  opts.forEach((o, i) => { const cls = z.ans != null ? (o.ok ? 'ok' : i === z.ans ? 'no' : '') : ''; h += `<button class="opt ${cls}" data-opt="${i}" ${z.ans != null ? 'disabled' : ''}><span class="k">${'ABCD'[i]}</span><span>${esc(o.t)}</span></button>`; });
   if (z.ans != null) {
     const ok = opts[z.ans].ok;
     h += `<div class="exp"><b class="v" style="color:${ok ? 'var(--ok)' : 'var(--red)'}">${ok ? `✔ 答對了！＋$${z.lastPay}` : `✘ 答錯了，正確答案是 ${'ABCD'[opts.findIndex(o => o.ok)]}`}</b><br><span class="law">${esc(q.law)}</span>${esc(q.e)}</div>`;
@@ -1558,12 +2513,12 @@ function answer(i) {
   const { q, opts } = z.cur, ok = opts[i].ok;
   const r = Q.answer(q, ok, z.mode);
   z.ans = i; z.n++; z.lastPay = r.pay; z.unlocked = r.unlocked;
-  if (ok) { z.right++; z.earn += r.pay; SFX.ok(); setTimeout(SFX.coin, 150); A.moneyFx(W / 2, Math.max(120, viewH() * 0.45), `+$${r.pay}`); }
+  if (ok) { z.right++; z.earn += r.pay; SFX.ok(); setTimeout(SFX.coin, 150); F.qp('right'); if (q.d === 3) F.qp('hard'); if (z.mode === 'review') F.qp('review'); F.qp('streak', G.quiz.streak); F.addXP(q.d * 2 + 1); coinFx(`+$${r.pay}`); }
   else SFX.no();
   if (r.unlocked) { SFX.up(); F.log(`開放新的工作章節「${r.unlocked.n}」！`, 'big'); }
   F.checkAch(); F.save(); render(); hud();
 }
-/* 模擬考 */
+function coinFx(t) { const el = document.createElement('div'); el.className = 'coin'; el.textContent = t; el.style.top = Math.max(90, viewH() * 0.4) + 'px'; document.body.appendChild(el); setTimeout(() => el.remove(), 1400); }
 function examView() {
   const z = UI.quiz;
   if (z.done) return examResult();
@@ -1578,13 +2533,12 @@ function finishExam() {
   let right = 0;
   z.pres.forEach((p, i) => { const ok = z.picks[i] != null && p.opts[z.picks[i]].ok; if (ok) right++; Q.answer(p.q, ok, 'exam'); });
   const score = Math.round(right / z.n * 100), pay = Q.examPay(score, z.n);
-  G.money += pay; G.quiz.earned += pay;
-  G.quiz.exams.push({ day: G.day, score, n: z.n });
+  G.money += pay; G.quiz.earned += pay; G.quiz.exams.push({ day: G.day, score, n: z.n });
   z.done = { right, score, pay };
+  F.qp('right', right); F.addXP(right * 3);
   F.log(`模擬考 ${score} 分（${right}/${z.n}），獲得獎金 $${U.fmt(pay)}。`, score >= 60 ? 'big' : 'bad');
   if (score >= 60) SFX.up(); else SFX.no();
-  A.moneyFx(W / 2, Math.max(120, viewH() * 0.45), `+$${pay}`);
-  F.checkAch(); F.save(); render();
+  coinFx(`+$${pay}`); F.checkAch(); F.save(); render();
 }
 function examResult() {
   const z = UI.quiz, d = z.done;
@@ -1597,14 +2551,20 @@ function examResult() {
   return h + '<div class="acts"><button class="btn" data-quit="1">回到工作清單</button></div>';
 }
 
+/* ---------- 匯出匯入 ---------- */
+function exportBox() { const s = F.exportSave(); modal(`<h2>📤 匯出存檔</h2><p>把下面這串文字整段複製起來（貼到記事本或傳給自己），換手機或資料被清掉時可以還原。</p><textarea id="exT" readonly style="width:100%;height:120px;font-size:11px">${esc(s)}</textarea><div class="acts"><button class="btn" id="exC">📋 複製</button><button class="btn alt" data-close="1">關閉</button></div>`); $('exC').onclick = () => { const t = $('exT'); t.select(); try { navigator.clipboard.writeText(t.value).then(() => toast('已複製'), () => { document.execCommand('copy'); toast('已複製'); }); } catch (e) { document.execCommand('copy'); toast('已複製'); } }; }
+function importBox() { modal(`<h2>📥 匯入存檔</h2><p>貼上之前匯出的文字（RLF2: 開頭）。會覆蓋目前的農場。</p><textarea id="imT" style="width:100%;height:120px;font-size:11px"></textarea><div class="acts"><button class="btn red" id="imG">匯入</button><button class="btn alt" data-close="1">取消</button></div>`); $('imG').onclick = () => { if (F.importSave($('imT').value)) { $('modal').hidden = true; toast('匯入成功！'); start(); } else toast('格式不對，請確認有完整複製'); }; }
+
 /* ---------- 點擊 ---------- */
 $('sheet').onclick = e => {
-  const b = e.target.closest('button,[data-ch]'); if (!b) return;
+  const b = e.target.closest('button,[data-ch],[data-rab],[data-dog]'); if (!b) return;
   const d = b.dataset;
   if (d.ch) { if (Q.unlocked(d.ch)) startWork(d.ch); return; }
+  if (d.rab) { UI.card = { type: 'rabbit', id: +d.rab }; W3.sel = UI.card; UI.min = true; render(); renderCard(); return; }
+  if (d.dog) { UI.card = { type: 'dog', id: +d.dog }; W3.sel = UI.card; UI.min = true; render(); renderCard(); return; }
   if (d.opt) return answer(+d.opt);
   if (d.next) return nextQ();
-  if (d.quit) { const z = UI.quiz; if (z && z.mode !== 'exam' && z.n) toast(`今天工作答對 ${z.right}/${z.n} 題，賺了 $${U.fmt(z.earn)}`); UI.quiz = null; UI.tab = z && z.mode === 'review' ? 'wrong' : 'work'; render(); return; }
+  if (d.quit) { const z = UI.quiz; if (z && z.mode !== 'exam' && z.n) toast(`這次工作答對 ${z.right}/${z.n} 題，賺了 $${U.fmt(z.earn)}`); UI.quiz = null; UI.tab = z && z.mode === 'review' ? 'wrong' : 'work'; render(); return; }
   if (d.peek) { const c = CH.find(x => x.id === d.peek); modal(`<h2>📖 ${esc(c.n)}</h2>${c.notes.map(n => `<div class="note">${esc(n)}</div>`).join('')}<div class="acts"><button class="btn" data-close="1">回去答題</button></div>`); return; }
   if (d.exam) return startExam();
   if (d.review) return startReview();
@@ -1612,16 +2572,24 @@ $('sheet').onclick = e => {
   if (d.xprev) { UI.quiz.i--; render(); return; }
   if (d.xnext) { UI.quiz.i++; render(); return; }
   if (d.xsubmit) { const miss = UI.quiz.picks.filter(x => x != null).length < UI.quiz.n; if (miss && !(UI.subArm && Date.now() - UI.subArm < 3000)) { UI.subArm = Date.now(); toast('還有題目沒作答，再按一次交卷'); return; } finishExam(); return; }
-  if (d.buy) { const r = F.buy(d.buy); toast(r === 'ok' ? '購買成功！' : r === 'money' ? '錢不夠，去工作答題吧' : '目前無法購買'); if (r === 'ok') SFX.coin(); render(); hud(); return; }
+  if (d.claim) { const v = F.claimQuest(+d.claim); if (v) { SFX.coin(); toast(`任務獎勵 +$${v}`); } render(); hud(); return; }
+  if (d.gifts) { let s = 0; for (const g of G.gifts.slice()) s += F.collectGift(g.id); SFX.coin(); toast(`🎁 收下禮物 +$${s}`); render(); hud(); return; }
+  if (d.buy) { const r = F.buy(d.buy); toast(r === 'ok' ? '購買成功！' : r === 'money' ? '錢不夠，去工作答題吧' : r === 'lv' ? '農場等級不夠' : '目前無法購買'); if (r === 'ok') SFX.coin(); render(); hud(); return; }
+  if (d.decor) { const r = F.buyDecor(d.decor); toast(r === 'ok' ? '擺好了！看兔子們圍過來 💗' : r === 'money' ? '錢不夠，去工作答題吧' : r === 'full' ? '擺設位置滿了，可以先收起一些' : r === 'lv' ? '農場等級不夠' : '無法購買'); if (r === 'ok') { SFX.love(); UI.min = true; } render(); hud(); return; }
+  if (d.cat) { UI.shopCat = d.cat; if (d.go) UI.tab = d.go; render(); return; }
   if (d.clean) { const r = F.doClean(); toast(r === 'ok' ? '🧹 打掃完成' : r === 'money' ? '錢不夠' : '已經很乾淨了'); render(); return; }
-  if (d.sell) { const p = F.sell(d.sell); if (p) { SFX.coin(); toast(`賣出 +$${p}`); } render(); hud(); return; }
+  if (d.repair) { const r = F.buy('repair'); toast(r === 'ok' ? '🔨 修好了' : '錢不夠'); render(); return; }
   if (d.go) { UI.tab = d.go; render(); return; }
+  if (d.bsort) { UI.bSort = d.bsort; render(); return; }
+  if (d.album) { const keys = Object.keys(G.album); modal(`<h2>📔 兔子圖鑑 ${keys.length} 種</h2>${keys.map(k => { const [br, pat, c1] = k.split('-'); const c = { br, pat, c1 }; return `<div class="kv"><span>${F.rarity(c) >= 3 ? '✨' : F.rarity(c) >= 1 ? '⭐' : '・'} ${esc(F.coatName(c))}</span><b>第 ${G.album[k]} 天</b></div>`; }).join('')}<p class="desc" style="margin-top:8px">小兔子會遺傳爸媽的毛色，也有機率出現突變的稀有花色。稀有兔子送養價格更高。</p><div class="acts"><button class="btn" data-close="1">關閉</button></div>`); return; }
   if (d.note) { UI.noteCh = d.note; render(); return; }
+  if (d.q != null) { G.quality = +d.q; render(); toast('畫質已調整'); return; }
   if (d.save) { toast(F.save() ? '💾 已存檔' : '存檔失敗'); return; }
+  if (d.export) return exportBox();
+  if (d.import) return importBox();
   if (d.intro) return intro();
-  if (d.title) { F.save(); $('top').hidden = true; $('bottom').hidden = true; titleScreen(); return; }
+  if (d.title) { F.save(); $('top').hidden = true; $('bottom').hidden = true; closeCard(); titleScreen(); return; }
 };
-/* 鍵盤：1-4 / A-D 作答，Enter 下一題 */
 addEventListener('keydown', e => {
   const z = UI.quiz; if (!z) return;
   const k = e.key.toUpperCase(), idx = '1234'.indexOf(k) >= 0 ? '1234'.indexOf(k) : 'ABCD'.indexOf(k);
@@ -1631,7 +2599,7 @@ addEventListener('keydown', e => {
 document.addEventListener('visibilitychange', () => { if (document.hidden && G.rabbits) F.save(); });
 addEventListener('pagehide', () => { if (G.rabbits) F.save(); });
 
-resize(); titleScreen(); requestAnimationFrame(loop);
+titleScreen(); requestAnimationFrame(loop);
 })();
 
 </script>
