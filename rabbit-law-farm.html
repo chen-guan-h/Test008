@@ -102,6 +102,8 @@ h3 small{font-weight:400;color:var(--mute);font-size:12px}
 #toast{position:fixed;left:50%;top:38%;transform:translate(-50%,-50%);z-index:50;background:rgba(43,38,34,.9);color:#fff;padding:9px 16px;border-radius:12px;font-size:14px;pointer-events:none;transition:opacity .3s;text-align:center;max-width:80vw}
 .bigscore{font-size:30px;font-weight:900}
 .timer{font-variant-numeric:tabular-nums}
+#mvbar{position:fixed;left:50%;transform:translateX(-50%);top:calc(env(safe-area-inset-top) + 96px);z-index:30;background:rgba(255,250,236,.97);border-radius:14px;padding:7px 10px;box-shadow:0 3px 10px rgba(0,0,0,.25);display:flex;gap:8px;align-items:center;font-size:13.5px;white-space:nowrap}
+#cFs button{border:0;background:none;font-size:16px;padding:0 2px;cursor:pointer}#cTk small{opacity:.7;margin-left:2px}.tkl{margin-top:6px;font-size:12.5px;background:#fff6e0;border-radius:9px;padding:5px 8px;display:flex;flex-wrap:wrap;align-items:center;gap:4px}.tkl .btn{margin-left:auto}
 @media(max-width:520px){.chip{font-size:11.5px;padding:3px 7px}.chip b{font-size:13px}#speed button{width:26px}.qtext{font-size:15px}.opt{font-size:14px;padding:9px 10px}}
 </style>
 </head>
@@ -110,15 +112,18 @@ h3 small{font-weight:400;color:var(--mute);font-size:12px}
 <div id="top" hidden>
   <div class="chip" id="cLv"><span>⭐ Lv <b id="lv">1</b></span><div class="lvb"><i id="lvBar"></i></div></div>
   <div class="chip" id="cMoney">💰 <b id="money">0</b></div>
+  <div class="chip" id="cTk" title="互動券：每答對 3 題得 1 張">🎟️ <b id="tk">0</b><small id="tkp"></small></div>
   <div class="chip" id="cDate"><b id="clock">06:00</b><small id="date"></small></div>
   <div class="chip" id="cWx"></div>
   <div class="chip" id="cRab">🐰 <b id="rab">0</b></div>
   <div class="chip" id="cDog">🐶 <b id="dog">0</b></div>
   <div class="chip" id="cHay">🌾 <b id="hay">0</b></div>
   <div class="chip" id="cPel">🥕 <b id="pel">0</b></div>
+  <div class="chip" id="cFs"><button id="fsBtn" title="全螢幕">⛶</button></div>
   <div class="chip" id="speed"><button data-s="0">❚❚</button><button data-s="1" class="on">▶</button><button data-s="2">▶▶</button></div>
 </div>
 <div id="feed"></div>
+<div id="mvbar" hidden></div>
 <div id="bottom" hidden>
   <div id="grip"><span></span></div>
   <div id="sheet"></div>
@@ -746,6 +751,11 @@ F.PERS = {
   tsun: { n: '傲嬌', ic: '😤', d: '嘴上說不要，其實很在意你；好感度高了會偷偷送你最好的禮物。', likes: ['steps', 'mushroom', 'windmill'], m: { snack: 0.6, pet: 0.6, brush: 0.6, play: 0.6, hug: 0.5 } },
 };
 F.ACTS = { pet: { n: '摸摸頭', ic: '🤚', aff: 4, mood: 8, cost: 0 }, snack: { n: '餵零食', ic: '🥕', aff: 6, mood: 10, cost: 20 }, brush: { n: '梳毛', ic: '🪮', aff: 5, mood: 8, cost: 0 }, play: { n: '陪玩', ic: '🎾', aff: 5, mood: 10, cost: 0 }, hug: { n: '抱抱', ic: '🤗', aff: 5, mood: 8, cost: 0 } };
+/* 互動券：每答對 CARE_Q 題得 1 張，摸頭／餵零食／梳毛／陪玩／抱抱／摸狗每次消耗 1 張（先讀書，再陪兔子） */
+F.CARE_Q = 3; F.CARE_MAX = 30;
+F.careLeft = () => F.CARE_Q - (G.careQ || 0);
+F.earnCare = function () { G.careQ = (G.careQ || 0) + 1; if (G.careQ >= F.CARE_Q) { G.careQ = 0; if (G.careTk < F.CARE_MAX) { G.careTk++; return 1; } } return 0; };
+F.needCare = () => `🎟️ 互動券不足：每答對 ${F.CARE_Q} 題可換 1 次互動（再答對 ${F.careLeft()} 題）`;
 F.AFF_LV = ['陌生', '認識', '朋友', '好朋友', '摯友'];
 F.affLv = a => Math.min(4, Math.floor(a / 20));
 F.DECOR = [
@@ -811,7 +821,7 @@ F.blank = () => ({
   level: 1, xp: 0, quests: null, album: {},
   stats: { born: 0, sold: 0, soldMoney: 0, attacks: 0, repel: 0, dogLost: 0, dogHurt: 0, doorsBroken: 0, sAttack: 0, sWin: 0, maxRabbits: 2, spent: 0, pets: 0, gifts: 0, giftMoney: 0 },
   quiz: { s: {}, right: 0, wrong: 0, streak: 0, best: 0, earned: 0, unlocked: ['c1'], exams: [], recent: [] },
-  ach: {}, seenIntro: 0, seenV2: 1, quality: 2,
+  ach: {}, seenIntro: 0, seenV2: 1, quality: 2, careTk: 1, careQ: 0, seenCare: 0,
 });
 F.newGame = function (name) {
   for (const k of Object.keys(G)) delete G[k];
@@ -995,6 +1005,8 @@ F.interact = function (r, act) {
   if (!A) return { ok: false };
   if (r.care[act]) return { ok: false, msg: `今天已經${A.n}過了，明天再來吧` };
   if (A.cost && G.money < A.cost) return { ok: false, msg: '錢不夠' };
+  if (G.careTk < 1) return { ok: false, msg: F.needCare(), study: 1 };
+  G.careTk--;
   if (A.cost) { G.money -= A.cost; G.stats.spent += A.cost; }
   r.care[act] = 1;
   let mul = P.m[act];
@@ -1016,7 +1028,7 @@ F.interact = function (r, act) {
   return { ok: true, react, msg };
 };
 F.dogInteract = function (d, act) {
-  if (act === 'pet') { if (d.care.pet) return { ok: false, msg: '今天摸過了' }; d.care.pet = 1; d.aff = Math.min(100, d.aff + 5); F.qp('anycare'); return { ok: true, msg: `${d.nm}開心地搖尾巴！` }; }
+  if (act === 'pet') { if (d.care.pet) return { ok: false, msg: '今天摸過了' }; if (G.careTk < 1) return { ok: false, msg: F.needCare(), study: 1 }; G.careTk--; d.care.pet = 1; d.aff = Math.min(100, d.aff + 5); F.qp('anycare'); return { ok: true, msg: `${d.nm}開心地搖尾巴！` }; }
   if (act === 'train') { if (d.care.train) return { ok: false, msg: '今天訓練過了，讓牠休息吧' }; if (d.hp < 40) return { ok: false, msg: '牠受傷了，先讓獸醫看看' }; if (!F.spend(300)) return { ok: false, msg: '錢不夠（$300）' }; d.care.train = 1; d.atk += 1; d.hp = Math.max(5, d.hp - 8); return { ok: true, msg: `${d.nm}完成防衛訓練，攻擊力 +1（現在 ${d.atk}）` }; }
   return { ok: false };
 };
@@ -1040,8 +1052,8 @@ F.useDecor = function (r, t) { if (!r) return; const fav = F.PERS[r.pers].likes.
 
 /* ---------- 每日任務與等級 ---------- */
 F.QPOOL = [
-  { k: 'right', n: '答對 {g} 題行政法', g: [8, 12, 16] }, { k: 'hard', n: '答對 {g} 題 ⭐⭐⭐ 高難題', g: [1, 2, 3] }, { k: 'pet', n: '摸摸兔子 {g} 次', g: [3, 5, 8] },
-  { k: 'snack', n: '餵兔子零食 {g} 次', g: [2, 3, 4] }, { k: 'care', n: '幫兔子梳毛／陪玩／抱抱 {g} 次', g: [3, 5, 7] }, { k: 'clean', n: '打掃兔舍 {g} 次', g: [1, 1, 1] },
+  { k: 'right', n: '答對 {g} 題行政法', g: [8, 12, 16] }, { k: 'hard', n: '答對 {g} 題 ⭐⭐⭐ 高難題', g: [1, 2, 3] }, { k: 'pet', n: '摸摸兔子 {g} 次', g: [2, 3, 4] },
+  { k: 'snack', n: '餵兔子零食 {g} 次', g: [2, 3, 4] }, { k: 'care', n: '幫兔子梳毛／陪玩／抱抱 {g} 次', g: [2, 3, 4] }, { k: 'clean', n: '打掃兔舍 {g} 次', g: [1, 1, 1] },
   { k: 'gift', n: '收集兔子的禮物 {g} 個', g: [1, 2, 3] }, { k: 'review', n: '錯題複習答對 {g} 題', g: [3, 5, 8] }, { k: 'streak', n: '連續答對 {g} 題', g: [5, 8, 12] },
 ];
 F.newQuests = function () {
@@ -1205,17 +1217,18 @@ Q.payFor = (q, mode) => Math.round(Q.PAY[q.d] * Q.rank().mul * (1 + Math.min(G.q
 Q.answer = function (q, ok, mode) {
   const s = Q.st(q.id), z = G.quiz;
   s.n++; z.recent = (z.recent || []).concat(q.id).slice(-6);
-  let pay = 0, unlocked = null;
+  let pay = 0, unlocked = null, tk = 0;
   if (ok) {
     pay = Q.payFor(q, mode);
     s.r++; s.box = Math.min(5, s.box + 1); s.last = 1; z.right++; z.streak++; z.best = Math.max(z.best, z.streak);
     if (mode !== 'exam') { G.money += pay; z.earned += pay; }
+    if (F.earnCare) tk = F.earnCare();
   } else { s.w++; s.box = 0; s.last = 0; z.wrong++; z.streak = 0; }
   /* 解鎖下一章 */
   const ci = CH.findIndex(c => c.id === q.ch);
   const next = CH[ci + 1];
   if (next && !Q.unlocked(next.id) && Q.mastery(q.ch).p >= Q.UNLOCK) { z.unlocked.push(next.id); unlocked = next; }
-  return { ok, pay, unlocked };
+  return { ok, pay, unlocked, tk };
 };
 /* 模擬考：從已解鎖章節抽 20 題（高普考測驗題型），難度平均分布 */
 Q.makeExam = function (n = 20) {
@@ -1798,7 +1811,8 @@ const YARD = { x0: -9.5, x1: 9.5, z0: 4.2, z1: 9.5 };
 const HUTCH_Z = -5.35, HX = i => -6.3 + i * 1.8;
 const SLOT = i => [-5.8 + (i % 5) * 2.6, -3.3 + Math.floor(i / 5) * 2.05];
 const TROUGH = [6.4, 2.0];
-const DOGHOUSE = [5.6, 6.4];
+const DOGHOUSE = [2.2, 5.6];   /* 狗屋與看門狗巡邏範圍移到庭院中間，手機畫面也看得到 */
+const DOGZ = { x0: -3.2, x1: 3.6, z0: 4.4, z1: 7.4 };
 const rnd = (a, b) => a + Math.random() * (b - a);
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -1840,7 +1854,7 @@ W3.sync = function () {
   /* 擺設 */
   const ids = new Set(G.decor.map(d => d.id));
   for (const [id, a] of W3.dec) if (!ids.has(id)) { W3.dyn.kids = W3.dyn.kids.filter(k => k !== a.m.root); W3.dec.delete(id); }
-  for (const d of G.decor) if (!W3.dec.has(d.id)) { const m = MD.decor(d.t), [x, z] = SLOT(d.slot); m.root.pos = [x, 0, z]; m.root.rot = [0, (d.slot % 3 - 1) * 0.25, 0]; W3.dyn.add(m.root); W3.dec.set(d.id, { d, m, x, z, users: 0, born: performance.now(), ballOff: [0, 0] }); }
+  for (const d of G.decor) if (!W3.dec.has(d.id)) { const m = MD.decor(d.t), [x, z] = d.x != null ? [d.x, d.z] : SLOT(d.slot); m.root.pos = [x, 0, z]; m.root.rot = [0, d.ry != null ? d.ry : (d.slot % 3 - 1) * 0.25, 0]; W3.dyn.add(m.root); W3.dec.set(d.id, { d, m, x, z, users: 0, born: performance.now(), ballOff: [0, 0] }); }
   /* 兔子（最多 40 隻在戶外） */
   const show = new Set(G.rabbits.slice(0, 40).map(r => r.id)); if (W3.sel && W3.sel.type === 'rabbit') show.add(W3.sel.id);
   for (const [id, a] of W3.rab) if (!show.has(id)) { W3.dyn.kids = W3.dyn.kids.filter(k => k !== a.m.root); W3.rab.delete(id); }
@@ -1849,7 +1863,7 @@ W3.sync = function () {
   /* 狗 */
   const dids = new Set(G.dogs.map(d => d.id));
   for (const [id, a] of W3.dogs) if (!dids.has(id) && !a.leaving) { W3.dyn.kids = W3.dyn.kids.filter(k => k !== a.m.root); W3.dogs.delete(id); }
-  for (const d of G.dogs) if (!W3.dogs.has(d.id)) { const m = MD.dog(d.ci); const a = { id: d.id, m, x: rnd(YARD.x0 + 1, YARD.x1 - 1), z: rnd(YARD.z0, YARD.z1), yaw: 0, st: 'idle', t: 1, ph: Math.random() * 9 }; m.root.pos = [a.x, 0, a.z]; W3.dyn.add(m.root); W3.dogs.set(d.id, a); }
+  for (const d of G.dogs) if (!W3.dogs.has(d.id)) { const m = MD.dog(d.ci); const a = { id: d.id, m, x: rnd(DOGZ.x0, DOGZ.x1), z: rnd(DOGZ.z0, DOGZ.z1), yaw: 0, st: 'idle', t: 1, ph: Math.random() * 9 }; m.root.pos = [a.x, 0, a.z]; W3.dyn.add(m.root); W3.dogs.set(d.id, a); }
 };
 W3.addRabbitActor = function (r, old) {
   const kit = r.age < F.ADULT, m = MD.rabbit(r.coat, kit);
@@ -1974,8 +1988,8 @@ W3.stepDog = function (a, d, dt, T) {
   if (a.leaving) return;
   a.t -= dt;
   if (!a.fight && a.t <= 0) {
-    if (night) { a.st = Math.random() < 0.6 ? 'lie' : 'walk'; a.tx = DOGHOUSE[0] + rnd(-1.5, 3); a.tz = DOGHOUSE[1] + rnd(-0.5, 2); }
-    else { a.st = U.pick(['walk', 'walk', 'sit', 'lie', 'walk']); a.tx = rnd(YARD.x0 + 1, YARD.x1 - 1); a.tz = rnd(YARD.z0, YARD.z1); }
+    if (night) { a.st = Math.random() < 0.6 ? 'lie' : 'walk'; a.tx = DOGHOUSE[0] + rnd(-1.6, 1.4); a.tz = DOGHOUSE[1] + rnd(0.7, 1.8); }
+    else { a.st = U.pick(['walk', 'walk', 'sit', 'lie', 'walk']); a.tx = rnd(DOGZ.x0, DOGZ.x1); a.tz = rnd(DOGZ.z0, DOGZ.z1); }
     a.t = rnd(3, 8);
   }
   let moving = false, sp = a.fight ? 4.5 : 1.6;
@@ -2173,6 +2187,24 @@ W3.drawOverlay = function (dt, T, W, H, dpr, env) {
 };
 function rr(c, x, y, w, h, r) { c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath(); }
 
+/* ---------- 擺設移動模式：拖曳到圍欄內任意位置、旋轉 ---------- */
+W3.move = null;
+W3.ground = function (sx, sy) {   /* 螢幕座標 → 地面（y=0）交點 */
+  const c = W3.cam, V = G3.view; if (!c.eye || !V.W) return null; const e = c.eye, t = c.ctgt;
+  let f = [t[0] - e[0], t[1] - e[1], t[2] - e[2]]; const fl = Math.hypot(...f); f = f.map(v => v / fl);
+  let r = [-f[2], 0, f[0]]; const rl = Math.hypot(...r) || 1; r = r.map(v => v / rl);   /* 右 = 前 × 上 */
+  const u = [r[1] * f[2] - r[2] * f[1], r[2] * f[0] - r[0] * f[2], r[0] * f[1] - r[1] * f[0]];
+  const k = Math.tan(c.fov / 2), asp = V.W / V.H, nx = (sx / V.W * 2 - 1) * k * asp, ny = (1 - sy / V.H * 2) * k;
+  const d = [f[0] + r[0] * nx + u[0] * ny, f[1] + r[1] * nx + u[1] * ny, f[2] + r[2] * nx + u[2] * ny]; if (d[1] > -1e-4) return null;
+  const s = -e[1] / d[1]; return [e[0] + d[0] * s, e[2] + d[2] * s];
+};
+W3.startMove = function (id) { const e = W3.dec.get(id); if (!e) return false; W3.move = { id, e }; if (!W3.mvRing) { W3.mvRing = G3.n('torus', { col: [1, 0.85, 0.3], emis: [0.5, 0.4, 0.1], rim: 0 }); W3.root.add(W3.mvRing); } W3.mvRing.visible = true; W3.placeMove(e.x, e.z); return true; };
+W3.placeMove = function (x, z) { const mv = W3.move; if (!mv) return; const e = mv.e; x = clamp(x, PEN.x0 + 0.9, PEN.x1 - 0.9); z = clamp(z, PEN.z0 + 2.3, PEN.z1 - 0.7);
+  if (Math.hypot(x - TROUGH[0], z - TROUGH[1]) < 1.3) { const a = Math.atan2(z - TROUGH[1], x - TROUGH[0]); x = TROUGH[0] + Math.cos(a) * 1.3; z = TROUGH[1] + Math.sin(a) * 1.3; }
+  e.x = x; e.z = z; e.d.x = +x.toFixed(2); e.d.z = +z.toFixed(2); e.m.root.pos = [x, 0, z]; W3.mvRing.pos = [x, 0.04, z]; W3.mvRing.rot = [Math.PI / 2, 0, 0]; W3.mvRing.scl = [1.1, 1.1, 0.25]; };
+W3.rotMove = function () { const mv = W3.move; if (!mv) return; const ry = ((mv.e.m.root.rot[1] || 0) + Math.PI / 4) % (Math.PI * 2); mv.e.m.root.rot = [0, ry, 0]; mv.e.d.ry = +ry.toFixed(3); };
+W3.endMove = function () { const mv = W3.move; if (!mv) return; W3.move = null; if (W3.mvRing) W3.mvRing.visible = false; mv.e.users = 0; for (const [, a] of W3.rab) if (a.dec === mv.e) { a.dec = null; a.t = 0; a.st = 'idle'; } };
+
 /* ---------- 點選與鏡頭操作 ---------- */
 W3.pick = function (sx, sy) {
   for (const g of W3.giftHit || []) if (Math.hypot(g.x - sx, g.y - sy) < 30) return { type: 'gift', id: g.id };
@@ -2193,9 +2225,10 @@ W3.bindInput = function () {
     if (P.size === 2) { const [a, b] = [...P.values()]; const d = Math.hypot(a[0] - b[0], a[1] - b[1]); if (pinch0) W3.cam.dist = clamp(dist0 * pinch0 / d, 7, 30); drag = 9; return; }
     const dx = e.clientX - prev[0], dy = e.clientY - prev[1];
     if (Math.hypot(e.clientX - sx, e.clientY - sy) > 8) drag = 1;
+    if (drag && W3.move) { const r = el.getBoundingClientRect(), g = W3.ground(e.clientX - r.left, e.clientY - r.top); if (g) W3.placeMove(g[0], g[1]); return; }
     if (drag) { W3.cam.yaw -= dx * 0.008; W3.cam.pitch = clamp(W3.cam.pitch + dy * 0.005, 0.35, 1.3); }
   });
-  const up = e => { const was = P.has(e.pointerId); P.delete(e.pointerId); if (!was) return; if (P.size === 0) { if (!drag && performance.now() - t0 < 500) { const r = el.getBoundingClientRect(); const hit = W3.pick(e.clientX - r.left, e.clientY - r.top); if (W3.onPick) W3.onPick(hit); } pinch0 = 0; } };
+  const up = e => { const was = P.has(e.pointerId); P.delete(e.pointerId); if (!was) return; if (P.size === 0) { if (!drag && performance.now() - t0 < 500) { const r = el.getBoundingClientRect(); if (W3.move) { const g = W3.ground(e.clientX - r.left, e.clientY - r.top); if (g) W3.placeMove(g[0], g[1]); } else { const hit = W3.pick(e.clientX - r.left, e.clientY - r.top); if (W3.onPick) W3.onPick(hit); } } pinch0 = 0; } };
   el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
   el.addEventListener('wheel', e => { e.preventDefault(); W3.cam.dist = clamp(W3.cam.dist * (1 + Math.sign(e.deltaY) * 0.1), 7, 30); }, { passive: false });
 };
@@ -2248,16 +2281,20 @@ function start() {
   if (!W3.ok && !W3.init($('cv'), $('ov'))) { $('nogl').hidden = false; }
   W3.onPick = onPick;
   F.ev.length = 0; setSpeed(G.speed ?? 1); UI.quiz = null; UI.tab = 'work'; closeCard(); render(); hud(); layout();
-  if (!G.seenIntro) intro(); else if (!G.seenV2) introV2();
+  if (!G.seenIntro) intro(); else if (!G.seenV2) introV2(); else if (!G.seenCare) careNotice();
 }
 function intro() {
   modal(`<h2>🐰 歡迎來到${esc(G.name)}</h2>
   <p>你是兔子農場的主人，同時在法律事務所打工。<b>答對行政法考題</b>就能領工錢，題目越難（⭐⭐⭐）報酬越高。</p>
-  <p>🐰 每隻兔子都有<b>個性</b>（貪吃、活力、害羞、黏人……），<b>點一下兔子</b>就能摸摸、餵零食、梳毛、陪玩、抱抱，好感度高了牠會送你小禮物 🍀。<br>🏠 到商店買<b>擺設</b>，兔子會跑去玩、去躲、去啃，喜歡的擺設會讓牠超開心。<br>🐶 看門狗在<b>庭院</b>巡邏，晚上會和野狼打架。一般的狼只會讓狗受傷；滿月夜可能出現 <b>S 級狼人</b>，狗狗才有危險。兔子永遠不會被抓走，但狼可能抓壞兔籠的門。</p>
+  <p>🐰 每隻兔子都有<b>個性</b>（貪吃、活力、害羞、黏人……），<b>點一下兔子</b>就能摸摸、餵零食、梳毛、陪玩、抱抱（每次用 1 張 🎟️ 互動券，<b>每答對 3 題得 1 張</b>），好感度高了牠會送你小禮物 🍀。<br>🏠 到商店買<b>擺設</b>，兔子會跑去玩、去躲、去啃，喜歡的擺設會讓牠超開心。<br>🐶 看門狗在<b>庭院</b>巡邏，晚上會和野狼打架。一般的狼只會讓狗受傷；滿月夜可能出現 <b>S 級狼人</b>，狗狗才有危險。兔子永遠不會被抓走，但狼可能抓壞兔籠的門。</p>
   <p>📋 每天有 3 個<b>每日任務</b>，完成拿獎金和農場經驗；農場升級會解鎖更多擺設。</p>
   <p>工作從<b>第一章</b>開始：本章答對過 60% 的題目就開放下一章。</p>
   <div class="acts"><button class="btn" data-close="1">開始！</button></div>`);
-  G.seenIntro = 1; G.seenV2 = 1;
+  G.seenIntro = 1; G.seenV2 = 1; G.seenCare = 1;
+}
+function careNotice() {
+  modal(`<h2>🎟️ 新規則：先讀書，再陪兔子</h2><p>摸摸頭、餵零食、梳毛、陪玩、抱抱（還有摸狗狗）現在每次都要用 <b>1 張互動券</b>。</p><p>📝 每<b>答對 ${F.CARE_Q} 題</b>行政法就得到 1 張（最多存 ${F.CARE_MAX} 張）。目前你有 <b>${G.careTk} 張</b>。</p><p>上方的 🎟️ 顯示持有張數與答題進度。</p><div class="acts"><button class="btn" data-close="1">好，去讀書！</button></div>`);
+  G.seenCare = 1;
 }
 function introV2() {
   modal(`<h2>✨ 農場大改版！</h2><p>你的答題紀錄、金錢和兔子都保留下來了。</p>
@@ -2268,6 +2305,14 @@ function introV2() {
 
 /* ---------- 速度 ---------- */
 function setSpeed(s) { G.speed = s; document.querySelectorAll('#speed button').forEach(b => b.classList.toggle('on', +b.dataset.s === s)); }
+/* 全螢幕（iPhone Safari 不支援網頁全螢幕 → 提示加入主畫面） */
+function fsOn() { return !!(document.fullscreenElement || document.webkitFullscreenElement); }
+$('fsBtn').onclick = () => { const de = document.documentElement;
+  if (fsOn()) { (document.exitFullscreen || document.webkitExitFullscreen).call(document); return; }
+  const rq = de.requestFullscreen || de.webkitRequestFullscreen; if (!rq) { toast('此瀏覽器不支援全螢幕：iPhone 請按「分享 → 加入主畫面」，從主畫面開啟即為全螢幕'); return; }
+  try { const p = rq.call(de, { navigationUI: 'hide' }); if (p && p.catch) p.catch(() => toast('無法進入全螢幕')); } catch (e) { toast('無法進入全螢幕'); } };
+const fsSync = () => { $('fsBtn').textContent = fsOn() ? '🗗' : '⛶'; setTimeout(() => { window.dispatchEvent(new Event('resize')); }, 120); };
+document.addEventListener('fullscreenchange', fsSync); document.addEventListener('webkitfullscreenchange', fsSync);
 $('speed').onclick = e => { const b = e.target.closest('button'); if (b) { setSpeed(+b.dataset.s); toast(['⏸ 農場時間暫停', '▶ 正常速度', '⏩ 兩倍速度'][+b.dataset.s]); } };
 
 /* ---------- 主迴圈 ---------- */
@@ -2307,6 +2352,7 @@ const WX = { 晴: '☀️ 晴', 陰: '☁️ 陰', 雨: '🌧️ 雨', 寒流: '
 function hud() {
   if (!G.rabbits) return;
   $('money').textContent = U.fmt(G.money);
+  $('tk').textContent = G.careTk; $('tkp').textContent = `${G.careQ || 0}/${F.CARE_Q}`; $('cTk').classList.toggle('warn', G.careTk < 1);
   $('clock').textContent = `${U.hm(G.min)} ${F.isNight() ? (F.fullMoon() ? '🌕' : '🌙') : ''}`;
   $('date').textContent = F.dateStr();
   $('cWx').textContent = WX[G.weather] || G.weather;
@@ -2445,6 +2491,10 @@ function onPick(hit) {
 }
 function closeCard() { const was = UI.card; UI.card = null; W3.sel = null; $('card').hidden = true; if (was && UI.min && !UI.quiz) { UI.min = false; render(); } }
 function cardPos() { $('card').style.bottom = (H - viewH() + 6) + 'px'; }
+/* 擺設移動工具列 */
+function mvBar(it) { const D = F.DEC[it.t], el = $('mvbar'); el.hidden = false; el.innerHTML = `<span>✋ 拖曳畫面移動「${D.ic} ${esc(D.n)}」</span><button class="btn s alt" id="mvRot">↻ 旋轉</button><button class="btn s" id="mvOk">✔ 完成</button>`;
+  $('mvRot').onclick = () => { W3.rotMove(); SFX.pop(); }; $('mvOk').onclick = () => { W3.endMove(); el.hidden = true; F.save(); toast(`「${D.n}」已放好，兔子們會去新位置玩`); SFX.pop(); }; }
+function tkLine() { return `<div class="tkl">🎟️ 互動券 <b>${G.careTk}</b> 張・每次互動用 1 張・再答對 <b>${F.careLeft()}</b> 題得 1 張${G.careTk < 1 ? ' <button class="btn s blue" data-gowork="1">📝 去答題</button>' : ''}</div>`; }
 function renderCard() {
   const c = UI.card, el = $('card');
   if (!c) { el.hidden = true; return; }
@@ -2456,18 +2506,18 @@ function renderCard() {
     <div><span class="tag">${P.ic} ${P.n}</span><span class="tag g">${esc(F.coatName(r.coat))}</span><span class="tag y">${r.age < F.ADULT ? '幼兔' : r.age > F.OLD ? '長老兔' : '成兔'} ${r.age} 天</span>${r.preg ? '<span class="tag r">🤰 懷孕</span>' : ''}${r.nurse ? '<span class="tag r">🍼 哺乳</span>' : ''}${r.sick ? '<span class="tag r">🤒 生病</span>' : ''}</div>
     <div class="desc">${esc(P.d)}</div>
     <div class="row" style="margin-top:4px"><span>好感 ${hearts(r.aff)} <small>${F.AFF_LV[F.affLv(r.aff)]} ${Math.round(r.aff)}</small></span><span>心情 ${F.moodIc(r.mood)} ${Math.round(r.mood)}</span></div>${meter(r.mood / 100, r.mood < 40 ? '#c8402a' : '#e88aa8')}
-    <div class="acts">${Object.entries(F.ACTS).map(([k, A]) => `<button class="btn s ${r.care[k] ? 'alt' : ''}" data-act="${k}" ${r.care[k] ? 'disabled' : ''}>${A.ic} ${A.n}${A.cost ? ` $${A.cost}` : ''}</button>`).join('')}</div>
+    <div class="acts">${Object.entries(F.ACTS).map(([k, A]) => `<button class="btn s ${r.care[k] || G.careTk < 1 ? 'alt' : ''}" data-act="${k}" ${r.care[k] ? 'disabled' : ''}>${A.ic} ${A.n}${A.cost ? ` $${A.cost}` : ''}</button>`).join('')}</div>${tkLine()}
     <div class="acts"><button class="btn s alt" data-sellr="1" ${r.preg || r.nurse || !F.sellPrice(r) ? 'disabled' : ''}>🏡 送養（得 $${F.sellPrice(r)}）</button></div>`;
   } else if (c.type === 'dog') {
     const d = G.dogs.find(q => q.id === c.id); if (!d) return closeCard();
     h = `<div class="row"><b>🐶 ${esc(d.nm)}　Lv${d.lv}</b><button class="x" data-cclose="1">✕</button></div><div class="desc">攻擊 ${d.atk}・戰績 ${d.wins} 勝・經驗 ${d.xp}/${d.lv * 3}${d.hungry ? '・挨餓中' : ''}</div>
     <div class="row"><span>體力</span><b>${Math.round(d.hp)}/100</b></div>${meter(d.hp / 100, d.hp < 40 ? '#c8402a' : '')}
-    <div class="acts"><button class="btn s" data-dact="pet" ${d.care.pet ? 'disabled' : ''}>🤚 摸摸</button><button class="btn s blue" data-dact="train" ${d.care.train ? 'disabled' : ''}>🏋️ 訓練 $300（攻擊+1）</button><button class="btn s alt" data-buy="vet" ${G.dogs.some(x => x.hp < 100) ? '' : 'disabled'}>🩺 治療所有狗 $300</button></div>`;
+    <div class="acts"><button class="btn s ${G.careTk < 1 ? 'alt' : ''}" data-dact="pet" ${d.care.pet ? 'disabled' : ''}>🤚 摸摸 🎟️</button><button class="btn s blue" data-dact="train" ${d.care.train ? 'disabled' : ''}>🏋️ 訓練 $300（攻擊+1）</button><button class="btn s alt" data-buy="vet" ${G.dogs.some(x => x.hp < 100) ? '' : 'disabled'}>🩺 治療所有狗 $300</button></div>`;
   } else if (c.type === 'decor') {
     const it = G.decor.find(q => q.id === c.id); if (!it) return closeCard();
     const D = F.DEC[it.t], fans = G.rabbits.filter(r => F.PERS[r.pers].likes.includes(it.t));
     h = `<div class="row"><b>${D.ic} ${esc(D.n)}</b><button class="x" data-cclose="1">✕</button></div><div class="desc">${esc(D.d)}</div><div class="desc">💗 最喜歡它的兔子：${fans.length ? fans.slice(0, 8).map(r => esc(r.nm)).join('、') + (fans.length > 8 ? '…' : '') : '還沒有'}</div>
-    <div class="acts"><button class="btn s alt" data-undecor="${it.id}">收起（退 $${Math.round(D.price / 2)}）</button></div>`;
+    <div class="acts"><button class="btn s" data-mvdecor="${it.id}">✋ 移動位置</button><button class="btn s alt" data-undecor="${it.id}">收起（退 $${Math.round(D.price / 2)}）</button></div>`;
   }
   el.innerHTML = h; el.hidden = false; cardPos();
 }
@@ -2476,11 +2526,13 @@ $('card').onclick = e => {
   const d = b.dataset, c = UI.card;
   if (d.cclose) return closeCard();
   if (d.rename) { const r = G.rabbits.find(q => q.id === c.id); const nm = prompt('幫兔子取個新名字（最多 8 字）', r.nm); if (nm) { F.rename(r, nm); renderCard(); } return; }
-  if (d.act) { const r = G.rabbits.find(q => q.id === c.id); const res = F.interact(r, d.act); if (!res.ok) { toast(res.msg || '不行喔'); return; } W3.react(r.id, res.react); res.react === 'run' ? SFX.no() : SFX.love(); toast(res.msg); renderCard(); hud(); return; }
+  if (d.gowork) { closeCard(); UI.quiz = null; UI.tab = 'work'; UI.min = false; render(); return; }
+  if (d.act) { const r = G.rabbits.find(q => q.id === c.id); const res = F.interact(r, d.act); if (!res.ok) { toast(res.msg || '不行喔'); if (res.study) SFX.no(); renderCard(); return; } W3.react(r.id, res.react); res.react === 'run' ? SFX.no() : SFX.love(); toast(res.msg); renderCard(); hud(); return; }
   if (d.sellr) { const r = G.rabbits.find(q => q.id === c.id); if (UI.sellArm !== r.id) { UI.sellArm = r.id; toast(`確定讓「${r.nm}」去新家嗎？再按一次確認`); return; } UI.sellArm = 0; const p = F.sellOne(r.id); if (p > 0) { SFX.coin(); toast(`「${r.nm}」去了新家 +$${p}`); } closeCard(); hud(); return; }
   if (d.dact) { const g = G.dogs.find(q => q.id === c.id); const res = F.dogInteract(g, d.dact); toast(res.msg); if (res.ok) SFX.pop(); renderCard(); hud(); return; }
   if (d.buy) { const r = F.buy(d.buy); toast(r === 'ok' ? '治療完成！' : '錢不夠'); renderCard(); return; }
   if (d.undecor) { F.removeDecor(+d.undecor); closeCard(); hud(); return; }
+  if (d.mvdecor) { const it = G.decor.find(q => q.id === +d.mvdecor); if (it && W3.startMove(it.id)) { closeCard(); UI.quiz = null; UI.min = true; render(); mvBar(it); } return; }
 };
 
 /* ---------- 答題 ---------- */
@@ -2513,7 +2565,7 @@ function answer(i) {
   const { q, opts } = z.cur, ok = opts[i].ok;
   const r = Q.answer(q, ok, z.mode);
   z.ans = i; z.n++; z.lastPay = r.pay; z.unlocked = r.unlocked;
-  if (ok) { z.right++; z.earn += r.pay; SFX.ok(); setTimeout(SFX.coin, 150); F.qp('right'); if (q.d === 3) F.qp('hard'); if (z.mode === 'review') F.qp('review'); F.qp('streak', G.quiz.streak); F.addXP(q.d * 2 + 1); coinFx(`+$${r.pay}`); }
+  if (ok) { z.right++; z.earn += r.pay; SFX.ok(); setTimeout(SFX.coin, 150); F.qp('right'); if (q.d === 3) F.qp('hard'); if (z.mode === 'review') F.qp('review'); F.qp('streak', G.quiz.streak); F.addXP(q.d * 2 + 1); coinFx(`+$${r.pay}`); if (r.tk) setTimeout(() => { coinFx('🎟️ 互動券 +1'); toast(`🎟️ 得到 1 張互動券（共 ${G.careTk} 張），可以去陪兔子一次`); }, 500); }
   else SFX.no();
   if (r.unlocked) { SFX.up(); F.log(`開放新的工作章節「${r.unlocked.n}」！`, 'big'); }
   F.checkAch(); F.save(); render(); hud();
@@ -2575,7 +2627,7 @@ $('sheet').onclick = e => {
   if (d.claim) { const v = F.claimQuest(+d.claim); if (v) { SFX.coin(); toast(`任務獎勵 +$${v}`); } render(); hud(); return; }
   if (d.gifts) { let s = 0; for (const g of G.gifts.slice()) s += F.collectGift(g.id); SFX.coin(); toast(`🎁 收下禮物 +$${s}`); render(); hud(); return; }
   if (d.buy) { const r = F.buy(d.buy); toast(r === 'ok' ? '購買成功！' : r === 'money' ? '錢不夠，去工作答題吧' : r === 'lv' ? '農場等級不夠' : '目前無法購買'); if (r === 'ok') SFX.coin(); render(); hud(); return; }
-  if (d.decor) { const r = F.buyDecor(d.decor); toast(r === 'ok' ? '擺好了！看兔子們圍過來 💗' : r === 'money' ? '錢不夠，去工作答題吧' : r === 'full' ? '擺設位置滿了，可以先收起一些' : r === 'lv' ? '農場等級不夠' : '無法購買'); if (r === 'ok') { SFX.love(); UI.min = true; } render(); hud(); return; }
+  if (d.decor) { const r = F.buyDecor(d.decor); toast(r === 'ok' ? '擺好了！點一下擺設可以「✋ 移動位置」💗' : r === 'money' ? '錢不夠，去工作答題吧' : r === 'full' ? '擺設位置滿了，可以先收起一些' : r === 'lv' ? '農場等級不夠' : '無法購買'); if (r === 'ok') { SFX.love(); UI.min = true; } render(); hud(); return; }
   if (d.cat) { UI.shopCat = d.cat; if (d.go) UI.tab = d.go; render(); return; }
   if (d.clean) { const r = F.doClean(); toast(r === 'ok' ? '🧹 打掃完成' : r === 'money' ? '錢不夠' : '已經很乾淨了'); render(); return; }
   if (d.repair) { const r = F.buy('repair'); toast(r === 'ok' ? '🔨 修好了' : '錢不夠'); render(); return; }
