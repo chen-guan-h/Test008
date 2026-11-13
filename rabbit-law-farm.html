@@ -101,6 +101,7 @@ h3 small{font-weight:400;color:var(--mute);font-size:12px}
 .box{background:var(--paper);border-radius:18px;max-width:520px;width:100%;max-height:90vh;overflow-y:auto;padding:18px;box-shadow:0 10px 40px rgba(0,0,0,.4)}
 .box h2{margin:0 0 8px;font-size:21px}
 .box p{line-height:1.7;margin:0 0 10px;font-size:14.5px}
+#modal{z-index:60}   /* 對話框要蓋在標題畫面上，否則標題畫面按「匯入存檔」看不到視窗 */
 #title{position:fixed;inset:0;z-index:40;display:flex;align-items:center;justify-content:center;padding:16px;background:linear-gradient(180deg,#86c2ea 0%,#d9f0fb 50%,#8cc65a 51%,#5e8f42 100%)}
 #title .box{text-align:center;background:rgba(251,247,238,.96)}
 #title h1{margin:6px 0 4px;font-size:28px;color:var(--leaf);letter-spacing:1px}
@@ -1544,6 +1545,26 @@ F.load = function () {
 F.peek = function () { try { return JSON.parse(localStorage.getItem(F.KEY)); } catch (e) { return null; } };
 F.wipe = function () { try { localStorage.removeItem(F.KEY); localStorage.removeItem(F.KEY + '_bak'); } catch (e) { /* 略 */ } };
 F.exportSave = () => 'RLF2:' + btoa(unescape(encodeURIComponent(JSON.stringify(G))));
+/* 存檔碼 v3：gzip 壓縮＋base64url（較短、不怕被聊天軟體斷行），舊版 RLF2 也能讀 */
+F.b64u = u8 => { let b = ''; for (let i = 0; i < u8.length; i += 0x8000) b += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(b).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); };
+F.unb64 = s => { s = s.replace(/-/g, '+').replace(/_/g, '/'); while (s.length % 4) s += '='; const b = atob(s), u = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return u; };
+F.zip = async (u8, mode) => { const cs = mode === 'c' ? new CompressionStream('gzip') : new DecompressionStream('gzip'); return new Uint8Array(await new Response(new Blob([u8]).stream().pipeThrough(cs)).arrayBuffer()); };
+F.exportCode = async function () { const raw = new TextEncoder().encode(JSON.stringify(G));
+  try { if (typeof CompressionStream !== 'undefined') return 'RLF3:' + F.b64u(await F.zip(raw, 'c')); } catch (e) { /* 舊瀏覽器 */ }
+  return F.exportSave(); };
+F.parseCode = async function (txt) {
+  let s = String(txt || '').replace(/[\s​　]+/g, '');
+  const m = s.match(/RLF([23])[:：]([A-Za-z0-9+/_=-]+)/);
+  if (!m) { const t = String(txt || '').trim(); if (t[0] === '{') { try { return { d: JSON.parse(t) }; } catch (e) { return { err: '存檔檔案內容損毀' }; } } return { err: '找不到存檔碼（應該以 RLF3: 或 RLF2: 開頭）' }; }
+  try { let json;
+    if (m[1] === '3') { if (typeof DecompressionStream === 'undefined') return { err: '這台裝置的瀏覽器太舊，請更新 iOS／Chrome 後再匯入' }; json = new TextDecoder().decode(await F.zip(F.unb64(m[2]), 'd')); }
+    else { let b = m[2].replace(/-/g, '+').replace(/_/g, '/'); while (b.length % 4) b += '='; json = decodeURIComponent(escape(atob(b))); }
+    return { d: JSON.parse(json) };
+  } catch (e) { return { err: '存檔碼不完整，可能只複製到一部分，請重新完整複製' }; } };
+F.applySave = function (d) { if (!d || !d.rabbits || !d.quiz) return false;
+  try { const cur = localStorage.getItem(F.KEY); if (cur) localStorage.setItem(F.KEY + '_preimport', cur); } catch (e) { /* 略 */ }
+  const m = F.migrate(d); for (const q of Object.keys(G)) delete G[q]; Object.assign(G, m); F.newQuests(); F.save(); return true; };
+F.undoImport = function () { try { const p = localStorage.getItem(F.KEY + '_preimport'); if (!p) return false; localStorage.setItem(F.KEY, p); localStorage.removeItem(F.KEY + '_preimport'); return F.load(); } catch (e) { return false; } };
 F.importSave = function (s) {
   try { s = String(s).trim().replace(/^RLF2:/, ''); const d = JSON.parse(decodeURIComponent(escape(atob(s)))); if (!d.rabbits || !d.quiz) return false; const m = F.migrate(d); for (const q of Object.keys(G)) delete G[q]; Object.assign(G, m); F.save(); return true; } catch (e) { return false; }
 };
@@ -4132,8 +4153,43 @@ function examResult() {
 }
 
 /* ---------- 匯出匯入 ---------- */
-function exportBox() { const s = F.exportSave(); modal(`<h2>📤 匯出存檔</h2><p>把下面這串文字整段複製起來（貼到記事本或傳給自己），換手機或資料被清掉時可以還原。</p><textarea id="exT" readonly style="width:100%;height:120px;font-size:11px">${esc(s)}</textarea><div class="acts"><button class="btn" id="exC">📋 複製</button><button class="btn alt" data-close="1">關閉</button></div>`); $('exC').onclick = () => { const t = $('exT'); t.select(); try { navigator.clipboard.writeText(t.value).then(() => toast('已複製'), () => { document.execCommand('copy'); toast('已複製'); }); } catch (e) { document.execCommand('copy'); toast('已複製'); } }; }
-function importBox() { modal(`<h2>📥 匯入存檔</h2><p>貼上之前匯出的文字（RLF2: 開頭）。會覆蓋目前的農場。</p><textarea id="imT" style="width:100%;height:120px;font-size:11px"></textarea><div class="acts"><button class="btn red" id="imG">匯入</button><button class="btn alt" data-close="1">取消</button></div>`); $('imG').onclick = () => { if (F.importSave($('imT').value)) { $('modal').hidden = true; toast('匯入成功！'); start(); } else toast('格式不對，請確認有完整複製'); }; }
+function saveFileName() { const d = new Date(), p = n => String(n).padStart(2, '0'); return `兔子農場存檔_${String(G.name || 'farm').replace(/[\\/:*?"<>|]/g, '')}_${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}.txt`; }
+async function exportBox() {
+  F.save(); const code = await F.exportCode(), name = saveFileName();
+  modal(`<h2>📤 匯出存檔</h2><p>換手機、清除瀏覽器資料，或從桌面 App 換回 Safari 之前，先把存檔帶走。建議<b>存成檔案</b>，最不容易出錯。</p>
+  <div class="acts" style="flex-direction:column;gap:8px"><button class="btn" id="exF" style="width:100%">📁 存成檔案／傳給自己（LINE、Email、雲端硬碟）</button>
+  <button class="btn blue" id="exC" style="width:100%">📋 複製存檔碼</button></div>
+  <textarea id="exT" readonly style="width:100%;height:84px;font-size:11px;margin-top:8px">${esc(code)}</textarea>
+  <div class="desc">存檔碼共 ${code.length.toLocaleString()} 字，以 ${code.slice(0, 5)} 開頭；貼的時候要<b>整段</b>貼上。</div>
+  <div class="acts"><button class="btn alt" data-close="1">關閉</button></div>`);
+  $('exC').onclick = () => { const t = $('exT'); t.focus(); t.select(); try { t.setSelectionRange(0, t.value.length); } catch (e) { /* 略 */ }
+    const ok = () => toast('已複製存檔碼'), bad = () => { try { document.execCommand('copy') ? ok() : toast('請長按文字框 → 全選 → 拷貝'); } catch (e) { toast('請長按文字框 → 全選 → 拷貝'); } };
+    try { navigator.clipboard.writeText(code).then(ok, bad); } catch (e) { bad(); } };
+  $('exF').onclick = async () => { const blob = new Blob([code], { type: 'text/plain' });
+    try { const file = new File([blob], name, { type: 'text/plain' }); if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: '兔子農場存檔' }); toast('已送出存檔檔案'); return; } } catch (e) { if (e && e.name === 'AbortError') return; }
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500); toast('已下載存檔檔案'); };
+}
+function importBox() {
+  let undo = ''; try { if (localStorage.getItem(F.KEY + '_preimport')) undo = '<div class="acts"><button class="btn alt s" id="imU">↩️ 復原上次匯入前的農場</button></div>'; } catch (e) { /* 略 */ }
+  modal(`<h2>📥 匯入存檔</h2><p>選一種方式帶入之前匯出的存檔。匯入前會先顯示存檔內容讓你確認，目前的農場也會自動備份。</p>
+  <div class="acts" style="flex-direction:column;gap:8px"><button class="btn" id="imF" style="width:100%">📁 選擇存檔檔案</button><button class="btn blue" id="imP" style="width:100%">📋 從剪貼簿貼上</button></div>
+  <input type="file" id="imFile" accept=".txt,.json,text/plain,application/json" style="display:none">
+  <textarea id="imT" placeholder="或把存檔碼貼在這裡（RLF3: 或 RLF2: 開頭）" style="width:100%;height:84px;font-size:11px;margin-top:8px"></textarea>
+  <div id="imMsg" class="desc"></div>
+  <div class="acts"><button class="btn red" id="imG">讀取存檔</button><button class="btn alt" data-close="1">取消</button></div>${undo}`);
+  const msg = t => { const m = $('imMsg'); if (m) m.innerHTML = t; };
+  const check = async txt => { msg('讀取中……'); const r = await F.parseCode(txt); if (r.err || !r.d || !r.d.rabbits || !r.d.quiz) { msg('⚠️ ' + esc(r.err || '這不是兔子農場的存檔')); return; }
+    const d = r.d, yr = Math.floor((d.day || 0) / 28) + 1;
+    modal(`<h2>📥 確認匯入</h2><div style="background:#fff;border-radius:12px;padding:12px;margin:8px 0"><b style="font-size:17px">${esc(d.name || '未命名農場')}</b><br>🐰 兔子 ${d.rabbits.length} 隻・✅ 答對 ${d.quiz.right || 0} 題・💰 $${Number(d.money || 0).toLocaleString()}・第 ${yr} 年</div>
+      <p>匯入後會<b>取代</b>這台裝置上目前的農場（目前的農場會自動備份，之後可以在匯入畫面復原）。</p>
+      <div class="acts"><button class="btn red" id="imOK">確定匯入</button><button class="btn alt" data-close="1">取消</button></div>`);
+    $('imOK').onclick = () => { if (F.applySave(d)) { $('modal').hidden = true; toast('匯入成功！歡迎回到「' + (G.name || '') + '」'); start(); } else toast('匯入失敗，存檔內容不完整'); }; };
+  $('imG').onclick = () => check($('imT').value);
+  $('imF').onclick = () => $('imFile').click();
+  $('imFile').onchange = e => { const f = e.target.files && e.target.files[0]; if (!f) return; const rd = new FileReader(); rd.onload = () => check(rd.result); rd.onerror = () => msg('⚠️ 讀不到這個檔案'); rd.readAsText(f); };
+  $('imP').onclick = async () => { try { const t = await navigator.clipboard.readText(); $('imT').value = t; check(t); } catch (e) { msg('無法直接讀取剪貼簿：請在上面的文字框<b>長按 → 貼上</b>，再按「讀取存檔」'); $('imT').focus(); } };
+  if ($('imU')) $('imU').onclick = () => { if (F.undoImport()) { $('modal').hidden = true; toast('已復原匯入前的農場'); start(); } else toast('沒有可復原的備份'); };
+}
 
 /* ---------- 點擊 ---------- */
 $('sheet').onclick = e => {
