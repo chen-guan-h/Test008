@@ -127,13 +127,14 @@ h3 small{font-weight:400;color:var(--mute);font-size:12px}
   <div class="chip" id="cDog">🐶 <b id="dog">0</b></div>
   <div class="chip" id="cHay">🌾 <b id="hay">0</b></div>
   <div class="chip" id="cPel">🥕 <b id="pel">0</b></div>
+  <div class="chip" id="cMed" title="兔用藥品">💊 <b id="med">0</b></div>
   <div class="chip" id="cFs"><button id="fsBtn" title="全螢幕">⛶</button></div>
   <div class="chip" id="speed"><button data-s="0">❚❚</button><button data-s="1" class="on">▶</button><button data-s="2">▶▶</button></div>
 </div>
 <div id="feed"></div>
 <div id="mvbar" hidden></div>
 <div id="bottom" hidden>
-  <div id="grip"><span></span></div>
+  <div id="grip"><span></span><em id="gripT">︾ 收起</em></div>
   <div id="sheet"></div>
   <div id="tabs">
     <button data-t="work" class="on"><i>💼</i>工作</button>
@@ -1133,9 +1134,12 @@ F.earnCare = function () { G.careQ = (G.careQ || 0) + 1; if (G.careQ >= F.CARE_Q
 F.needCare = () => `🎟️ 互動券不足：每答對 ${F.CARE_Q} 題可換 1 次互動（再答對 ${F.careLeft()} 題）`;
 /* 神秘蛋：登入禮物，答對 EGG_Q 題孵化 */
 F.EGG_Q = 30;
-F.giveEgg = () => { if (!G.shiba) G.shiba = { st: 'egg', q: 0, nm: '大福', care: {}, aff: 10, slept: 0, seen: 0 }; return G.shiba; };
-F.shibaInteract = function (act) {
-  const s = G.shiba; if (!s || s.st !== 'pup') return { ok: false };
+F.giveEgg = () => { if (!G.shiba) G.shiba = { st: 'egg', q: 0, nm: '大福', care: {}, aff: 10, slept: 0, seen: 0, v: 2 }; return G.shiba; };
+/* 限定復刻蛋：已收過第一顆蛋的玩家再送一顆，孵出黑柴 */
+F.SHIBA_K = ['shiba', 'shiba2'];
+F.giveEgg2 = () => { if (G.shiba && G.shiba.seen && !G.shiba.v && !G.shiba2 && !G.egg2Given) { G.egg2Given = 1; G.shiba2 = { st: 'egg', q: 0, nm: '黑糖', look: 'black', care: {}, aff: 10, slept: 0, seen: 0, re: 1 }; } return G.shiba2; };
+F.shibaInteract = function (act, k) {
+  const s = G[k || 'shiba']; if (!s || s.st !== 'pup') return { ok: false };
   const N = { pet: '摸摸', shake: '握手' }[act]; if (!N) return { ok: false };
   if (s.care[act]) return { ok: false, msg: `今天已經${N}過了，明天再來吧` };
   if (G.careTk < 1) return { ok: false, msg: F.needCare(), study: 1 };
@@ -1165,11 +1169,11 @@ F.DECOR = [
 F.DEC = Object.fromEntries(F.DECOR.map(d => [d.t, d]));
 F.FENCE = [{ n: '無圍籬', mul: 1 }, { n: '木柵欄', mul: 0.75, price: 2500 }, { n: '鐵絲網圍籬', mul: 0.5, price: 6000 }, { n: '電圍籬', mul: 0.3, price: 15000 }];
 F.SHOP = [
-  { id: 'hay5', cat: 'supply', n: '牧草 5 公斤', ic: '🌾', price: 120, d: '兔子主食，維持腸胃健康。', f: () => (G.hay += 5) },
-  { id: 'hay20', cat: 'supply', n: '牧草 20 公斤', ic: '🌾', price: 440, d: '大包裝比較划算。', f: () => (G.hay += 20) },
-  { id: 'pel5', cat: 'supply', n: '兔飼料 5 公斤', ic: '🥕', price: 200, d: '幼兔成長、母兔懷孕哺乳需要。', f: () => (G.pel += 5) },
-  { id: 'pel20', cat: 'supply', n: '兔飼料 20 公斤', ic: '🥕', price: 720, d: '大包裝比較划算。', f: () => (G.pel += 20) },
-  { id: 'med', cat: 'supply', n: '兔用藥品 3 份', ic: '💊', price: 400, d: '有兔子生病時自動使用。', f: () => (G.med += 3) },
+  { id: 'hay5', cat: 'supply', n: '牧草 5 公斤', ic: '🌾', price: 120, d: '兔子主食，維持腸胃健康。', stk: () => G.hay.toFixed(1) + ' kg', f: () => (G.hay += 5) },
+  { id: 'hay20', cat: 'supply', n: '牧草 20 公斤', ic: '🌾', price: 440, d: '大包裝比較划算。', stk: () => G.hay.toFixed(1) + ' kg', f: () => (G.hay += 20) },
+  { id: 'pel5', cat: 'supply', n: '兔飼料 5 公斤', ic: '🥕', price: 200, d: '幼兔成長、母兔懷孕哺乳需要。', stk: () => G.pel.toFixed(1) + ' kg', f: () => (G.pel += 5) },
+  { id: 'pel20', cat: 'supply', n: '兔飼料 20 公斤', ic: '🥕', price: 720, d: '大包裝比較划算。', stk: () => G.pel.toFixed(1) + ' kg', f: () => (G.pel += 20) },
+  { id: 'med', cat: 'supply', n: '兔用藥品 3 份', ic: '💊', price: 400, d: '有兔子生病時自動使用。', stk: () => G.med + ' 份', f: () => (G.med += 3) },
   { id: 'doe', cat: 'animal', n: '母兔（隨機花色個性）', ic: '🐰', price: 400, d: '成年母兔，可以繁殖。', f: () => F.addRabbit('f', 10) },
   { id: 'buck', cat: 'animal', n: '公兔（隨機花色個性）', ic: '🐇', price: 400, d: '需要有公兔才能繁殖。', f: () => F.addRabbit('m', 10) },
   { id: 'rare', cat: 'animal', n: '稀有品種兔', ic: '✨', price: 1600, lv: 4, d: '垂耳兔、侏儒兔或獅子兔，花色稀有。', f: () => F.addRabbit(Math.random() < 0.5 ? 'f' : 'm', 10, null, true) },
@@ -1267,7 +1271,7 @@ F.hour = function (h) {
     if (r.full < 25) { r.hp = Math.max(15, r.hp - 1.2); r.mood = Math.max(0, r.mood - 0.8); }
     else if (!r.sick) r.hp = Math.min(100, r.hp + 0.5);
   }
-  if (h === G.wolfHour) F.raid();
+  if (h === G.wolfHour) { if (F.raidAsk) { G.raidPending = 1; F.hold = true; } else F.raid(); }
   if (h === G.eagle) F.eagleScare();
 };
 F.planDay = function () {
@@ -1276,7 +1280,7 @@ F.planDay = function () {
   if (G.weather === '颱風') { G.clean = Math.max(0, G.clean - 30); F.log('颱風來襲！兔舍被吹得亂七八糟。', 'bad'); emit({ k: 'alert', m: '🌀 颱風來襲' }); }
   const n = G.rabbits.length;
   let p = d < 2 ? 0 : 0.3 + Math.min(0.2, d * 0.006) + Math.min(0.2, n / 140);
-  p = Math.min(0.92, p * [0.9, 1, 1.15, 1.35][s] * F.FENCE[G.fence].mul * (G.weather === '雨' || G.weather === '颱風' ? 0.85 : 1));
+  p = Math.min(0.92, p * [0.9, 1, 1.15, 1.35][s] * F.FENCE[G.fence].mul * (G.fac && G.fac.lamp ? 0.8 : 1) * (G.weather === '雨' || G.weather === '颱風' ? 0.85 : 1));
   const sChance = d >= 14 ? (F.fullMoon() ? 0.4 : 0.05) : 0;
   G.wolfS = Math.random() < sChance ? 1 : 0;
   if (G.wolfS) p = Math.max(p, F.fullMoon() ? 0.85 : 0.5);
@@ -1290,7 +1294,7 @@ F.newDay = function () {
   if (F.fullMoon()) F.log('🌕 今晚是滿月……聽說森林深處的狼人會出沒。', 'bad');
   /* 年齡、懷孕、哺乳 */
   const births = [];
-  if (G.shiba) G.shiba.care = {};
+  for (const k of F.SHIBA_K) if (G[k]) G[k].care = {};
   for (const r of G.rabbits) { r.age++; if (r.nurse) r.nurse--; if (r.preg) { r.preg--; if (!r.preg) births.push(r); } r.care = {}; }
   for (const m of births) {
     let litter = U.ri(2, 6); if (m.mood < 40 || m.full < 40) litter = Math.max(1, litter - 2);
@@ -1344,19 +1348,31 @@ F.newDay = function () {
 
 /* ---------- 夜襲：野狼與 S 級狼人 ---------- */
 F.dogPower = d => d.atk * (0.45 + d.hp / 180) * (1 + (d.lv - 1) * 0.1);
-F.raid = function () {
+/* 狼來襲時的防禦答題：每答對一題，狗狗隨機獲得一種防禦 buff（不重複） */
+F.RBUFF = {
+  armor: { ic: '🛡️', n: '鐵甲護身', d: '狗狗受到的傷害 −30%' },
+  dodge: { ic: '🌀', n: '閃避步伐', d: '每隻狗有 40% 機率完全閃開攻擊' },
+  hold: { ic: '🏰', n: '堅守陣地', d: '防守力 +20%，更容易擊退狼群' },
+  regen: { ic: '💚', n: '再生之光', d: '戰鬥結束後狗狗體力 +20' },
+  ward: { ic: '🔰', n: '守護結界', d: '兔籠的門少被抓壞 1 扇' },
+};
+F.raid = function (buffs) {
+  const BF = new Set(buffs || []);
   const d = G.day, S = !!G.wolfS;
   const n = S ? 1 : d < 12 ? 1 : U.clamp(1 + Math.floor(Math.random() * (1 + Math.min(3, d / 20 + G.rabbits.length / 40))), 1, 5);
   G.stats.attacks++; if (S) G.stats.sAttack++;
   const dogs = G.dogs.slice();
   const res = { n, S, dogs: [], taken: null, takenName: '', repelled: false, doors: [], bounty: 0 };
   let dp = 0; for (const g of dogs) dp += F.dogPower(g) * U.rand(0.75, 1.3);
-  const wp = S ? U.rand(55, 85) : n * 12 * U.rand(0.8, 1.2) * (F.season() === 3 ? 1.15 : 1);
+  if (BF.has('hold')) dp *= 1.2;
+  res.buffs = [...BF];
+  const wp0 = S ? U.rand(55, 85) : n * 12 * U.rand(0.8, 1.2) * (F.season() === 3 ? 1.15 : 1), wp = wp0 * 1.1;   /* 狼血量 110% */
   res.repelled = dogs.length > 0 && dp >= wp;
   /* 狗的傷勢：一般狼只會受傷，不會死 */
   for (const g of dogs) {
-    const dmg = Math.round(S ? U.rand(30, 60) : (wp / Math.max(1, dogs.length)) * U.rand(0.8, 1.6) + U.rand(2, 8));
-    g.hp = Math.max(5, g.hp - dmg); res.dogs.push({ id: g.id, dmg, hp: g.hp }); G.stats.dogHurt++;
+    const dmg = Math.round((S ? U.rand(30, 60) : (wp0 / Math.max(1, dogs.length)) * U.rand(0.8, 1.6) + U.rand(2, 8)) * 0.5);   /* 狼傷害 50% */
+    const dodge = BF.has('dodge') && Math.random() < 0.4, dm = dodge ? 0 : Math.round(dmg * (BF.has('armor') ? 0.7 : 1));
+    g.hp = Math.max(5, g.hp - dm); if (BF.has('regen')) g.hp = Math.min(100, g.hp + 20); res.dogs.push({ id: g.id, dmg: dm, hp: g.hp, dodge }); if (dm) G.stats.dogHurt++;
   }
   if (S && !res.repelled && dogs.length && Math.random() < 0.55) {
     const v = dogs.slice().sort((a, b) => a.hp - b.hp)[0];
@@ -1370,7 +1386,7 @@ F.raid = function () {
   } else {
     /* 狼衝進兔舍：只破壞門、嚇壞兔子，不會抓走兔子 */
     const ok = G.doors.map((v, i) => (v ? i : -1)).filter(i => i >= 0);
-    const k = Math.min(ok.length, S ? 2 : 1 + (n >= 3 ? 1 : 0));
+    const k = Math.max(0, Math.min(ok.length, S ? 2 : 1 + (n >= 3 ? 1 : 0)) - (BF.has('ward') ? 1 : 0));
     for (let i = 0; i < k; i++) { const j = ok.splice(Math.floor(Math.random() * ok.length), 1)[0]; G.doors[j] = 0; res.doors.push(j); G.stats.doorsBroken++; }
     for (const r of G.rabbits) r.mood = Math.max(0, r.mood - 15);
   }
@@ -1378,6 +1394,7 @@ F.raid = function () {
   if (!dogs.length) m += '沒有看門狗……';
   else if (res.repelled) m += S ? `看門狗們聯手擊退了狼人！獲得賞金 $1,500！` : '看門狗英勇擊退了狼群！狗狗受了點傷。';
   else m += '狗狗擋不住，受傷了。';
+  if (BF.size) m += `（防禦加持：${[...BF].map(b => F.RBUFF[b].ic + F.RBUFF[b].n).join('、')}）`;
   if (res.taken) m += `「${res.takenName}」被狼人叼走了……`;
   if (res.doors.length) m += `兔籠的門被抓壞了 ${res.doors.length} 扇，兔子嚇壞了（兔子都平安）。`;
   F.log(m, res.repelled && !res.taken ? 'good' : 'bad');
@@ -1632,7 +1649,7 @@ Q.answer = function (q, ok, mode) {
     s.r++; s.box = Math.min(5, s.box + 1); s.last = 1; z.right++; z.streak++; z.best = Math.max(z.best, z.streak);
     if (mode !== 'exam') { G.money += pay; z.earned += pay; }
     if (F.earnCare) tk = F.earnCare();
-    if (G.shiba && G.shiba.st === 'egg') { G.shiba.q++; if (G.shiba.q >= F.EGG_Q) { G.shiba.st = 'pup'; G.shiba.born = G.day; hatch = 1; } }
+    for (const k of F.SHIBA_K) { const E = G[k]; if (E && E.st === 'egg') { E.q++; if (E.q >= F.EGG_Q) { E.st = 'pup'; E.born = G.day; hatch = 1; } } }
   } else { s.w++; s.box = 0; s.last = 0; z.wrong++; z.streak = 0; }
   /* 解鎖下一章 */
   const ci = CH.findIndex(c => c.id === q.ch);
@@ -2016,39 +2033,62 @@ MD.dog = function (ci) {
   const legs = [];
   for (const [x, z] of [[-0.11, 0.22], [0.11, 0.22], [-0.11, -0.22], [0.11, -0.22]]) { const lg = grp({ pos: [x, 0.36, z] }); lg.add(mk('cyl', [0, -0.16, 0], [0.05, 0.34, 0.05], c1), mk('sphere', [0, -0.33, 0.02], [0.055, 0.04, 0.07], c2)); legs.push(lg); bodyG.add(lg); }
   const headG = grp({ pos: [0, 0.64, 0.36] });
-  headG.add(mk('sphere', [0, 0, 0], [0.16, 0.15, 0.155], c1, { fur }), mk('sphere', [0, -0.04, 0.12], [0.085, 0.07, 0.1], c2, { fur }), mk('sphere', [0, -0.01, 0.215], [0.03, 0.024, 0.02], '#1a1412', { spec: 40 }),
+  const H0 = mk('sphere', [0, 0, 0], [0.16, 0.15, 0.155], c1, { fur });
+  headG.add(H0, mk('sphere', [0, -0.04, 0.12], [0.085, 0.07, 0.1], c2, { fur }), mk('sphere', [0, -0.01, 0.215], [0.03, 0.024, 0.02], '#1a1412', { spec: 40 }),
     mk('sphere', [-0.08, -0.05, 0.08], [0.06, 0.055, 0.05], c2), mk('sphere', [0.08, -0.05, 0.08], [0.06, 0.055, 0.05], c2));
   const eyes = [];
   for (const sx of [-1, 1]) { const e = mk('sphere', [sx * 0.07, 0.035, 0.125], [0.026, 0.028, 0.02], '#16100e', { spec: 70 }); e.add(mk('sphere', [sx * -0.2, 0.35, 0.8], [0.3, 0.3, 0.3], '#ffffff', { emis: [0.9, 0.9, 0.9] })); headG.add(e); eyes.push(e); }
   for (const sx of [-1, 1]) headG.add(mk('cone6', [sx * 0.085, 0.15, -0.01], [0.055, 0.12, 0.035], c1, { rot: [-0.1, 0, sx * -0.25] }), mk('cone6', [sx * 0.085, 0.14, 0.004], [0.03, 0.08, 0.02], '#e8a0a0', { rot: [-0.1, 0, sx * -0.25] }));
   const tongue = mk('sphere', [0, -0.09, 0.17], [0.03, 0.012, 0.04], '#e86a7a'); tongue.visible = false; headG.add(tongue);
-  const collar = mk('torus', [0, 0.56, 0.27], [0.13, 0.13, 0.13], '#c8402a', { rot: [1.2, 0, 0] });
-  const tagN = mk('sphere', [0, 0.47, 0.37], [0.025, 0.025, 0.01], '#f2c84a', { spec: 50 });
+  /* 麻呂眉、腮紅、嘴角 */
+  for (const sx of [-1, 1]) headG.add(mk('sphere', [sx * 0.058, 0.085, 0.128], [0.022, 0.013, 0.012], c2, { rot: [0, 0, sx * 0.3] }), mk('sphere', [sx * 0.1, -0.035, 0.105], [0.026, 0.016, 0.012], '#f29a9a', { alpha: 0.55, rim: 0 }));
+  headG.add(mk('torus', [0, -0.065, 0.19], [0.03, 0.03, 0.012], '#3a221c', { rot: [0, 0, 0] }));
+  const ruff = mk('sphere', [0, 0.5, 0.3], [0.135, 0.13, 0.1], c2, { fur: FUR(0.09, 110, 4) });
+  const collar = mk('torus', [0, 0.56, 0.27], [0.13, 0.13, 0.13], ['#c8402a', '#2a6ac8', '#e8a03a', '#3a9a5a', '#a04ac8', '#c8402a'][ci % 6], { rot: [1.2, 0, 0], spec: 30 });
+  const tagN = mk('sphere', [0, 0.465, 0.375], [0.034, 0.034, 0.034], '#f2c84a', { spec: 90, emis: [0.12, 0.09, 0.02] });
+  tagN.add(mk('box', [0, -0.35, 0.75], [0.9, 0.12, 0.2], '#6a4a10'));
   const tailG = grp({ pos: [0, 0.6, -0.32] });
   tailG.add(mk('torus', [0, 0.05, 0], [0.08, 0.1, 0.08], c1, { rot: [0, 0, 1.57], fur }), mk('sphere', [0, 0.13, 0.02], [0.05, 0.05, 0.05], c2, { fur }));
-  bodyG.add(B, belly, headG, collar, tagN, tailG);
+  bodyG.add(B, belly, ruff, headG, collar, tagN, tailG);
   const bandage = mk('box', [0.0, 0.74, 0.36], [0.33, 0.03, 0.2], '#ffffff'); bandage.visible = false; bodyG.add(bandage);
   root.add(sh, bodyG);
-  return { root, bodyG, headG, legs, tailG, tongue, eyes, bandage, body: [B, belly] };
+  return { root, bodyG, headG, legs, tailG, tongue, eyes, bandage, body: [B, belly, ruff, H0] };
 };
 
 /* ---------- 野狼 ---------- */
-MD.wolf = function () {
-  const c1 = '#6c6f76', c2 = '#c9c4b8', fur = FUR(0.09, 80, 4);
+const mixC = (a, b) => '#' + [1, 3, 5].map(i => Math.round((parseInt(a.substr(i, 2), 16) + parseInt(b.substr(i, 2), 16) * 2) / 3).toString(16).padStart(2, '0')).join('');
+MD.WOLFCOL = [['#6c6f76', '#c9c4b8', '#3e4046'], ['#4a4644', '#b8ada0', '#24201f'], ['#8a7058', '#e0d2bc', '#4a3a2c']];
+MD.wolf = function (v) {
+  const [c1, c2, c3] = MD.WOLFCOL[(v || 0) % MD.WOLFCOL.length], fur = FUR(0.09, 80, 4), furL = FUR(0.13, 90, 5);
   const mk = (geo, p, s, col, o) => n(geo, Object.assign({ pos: p, scl: s, col, rim: 0.3 }, o || {}));
   const root = grp(), sh = SHADOW({ scl: [0.45, 1, 0.75] }), bodyG = grp();
   const legs = [];
-  for (const [x, z] of [[-0.13, 0.3], [0.13, 0.3], [-0.13, -0.32], [0.13, -0.32]]) { const lg = grp({ pos: [x, 0.5, z] }); lg.add(mk('cyl', [0, -0.24, 0], [0.055, 0.48, 0.055], c1), mk('sphere', [0, -0.47, 0.03], [0.06, 0.04, 0.08], '#4a4c52')); legs.push(lg); bodyG.add(lg); }
-  bodyG.add(mk('sphere', [0, 0.62, 0], [0.24, 0.25, 0.5], c1, { fur }), mk('sphere', [0, 0.55, 0.18], [0.19, 0.2, 0.25], c2, { fur }), mk('sphere', [0, 0.74, 0.28], [0.22, 0.22, 0.2], c1, { fur }));
+  for (const [x, z] of [[-0.13, 0.3], [0.13, 0.3], [-0.13, -0.32], [0.13, -0.32]]) {
+    const lg = grp({ pos: [x, 0.5, z] }), front = z > 0;
+    lg.add(mk('sphere', [0, -0.08, 0], [0.075, 0.16, 0.085], c1, { fur }), mk('cyl', [0, -0.27, 0], [0.05, 0.42, 0.05], front ? c2 : c1), mk('sphere', [0, -0.47, 0.03], [0.062, 0.04, 0.085], c3));
+    for (let i = -1; i <= 1; i++) lg.add(mk('cone6', [i * 0.025, -0.48, 0.11], [0.011, 0.04, 0.011], '#efe6d2', { rot: [1.9, 0, 0], spec: 40 }));
+    legs.push(lg); bodyG.add(lg);
+  }
+  const Bw = mk('sphere', [0, 0.62, 0], [0.24, 0.25, 0.5], c1, { fur }), chest = mk('sphere', [0, 0.55, 0.18], [0.19, 0.2, 0.25], c2, { fur }), sh2 = mk('sphere', [0, 0.74, 0.28], [0.22, 0.22, 0.2], c1, { fur });
+  const saddle = mk('sphere', [0, 0.77, -0.04], [0.19, 0.11, 0.42], c3, { fur }), ruff = mk('sphere', [0, 0.78, 0.36], [0.23, 0.2, 0.14], mixC(c1, c2), { fur: furL });
+  bodyG.add(Bw, chest, sh2, saddle, ruff);
   const headG = grp({ pos: [0, 0.86, 0.52] });
-  headG.add(mk('sphere', [0, 0, 0], [0.17, 0.16, 0.18], c1, { fur }), mk('sphere', [0, -0.05, 0.19], [0.085, 0.075, 0.16], c2, { fur }), mk('sphere', [0, -0.02, 0.34], [0.035, 0.028, 0.025], '#121010', { spec: 40 }));
-  for (const sx of [-1, 1]) headG.add(mk('cone6', [sx * 0.09, 0.17, -0.03], [0.06, 0.15, 0.04], c1, { rot: [-0.15, 0, sx * -0.2] }));
+  const H0 = mk('sphere', [0, 0, 0], [0.17, 0.16, 0.18], c1, { fur });
+  headG.add(H0, mk('sphere', [0, -0.05, 0.19], [0.085, 0.075, 0.16], c2, { fur }), mk('sphere', [0, 0.03, 0.12], [0.12, 0.06, 0.14], c3, { fur }), mk('sphere', [0, -0.02, 0.34], [0.035, 0.028, 0.025], '#121010', { spec: 40 }));
+  for (const sx of [-1, 1]) {
+    headG.add(mk('cone6', [sx * 0.09, 0.17, -0.03], [0.06, 0.15, 0.04], c1, { rot: [-0.15, 0, sx * -0.2] }), mk('cone6', [sx * 0.09, 0.16, -0.015], [0.035, 0.1, 0.02], '#3a2a2a', { rot: [-0.15, 0, sx * -0.2] }));
+    headG.add(mk('sphere', [sx * 0.15, -0.05, 0.02], [0.06, 0.08, 0.09], c2, { fur: furL }));        // 頰毛
+    headG.add(mk('cone6', [sx * 0.04, -0.105, 0.28], [0.013, 0.045, 0.013], '#fbf6ea', { rot: [3.14, 0, 0], spec: 60 }));   // 獠牙
+    headG.add(mk('box', [sx * 0.075, 0.085, 0.14], [0.06, 0.012, 0.02], c3, { rot: [0, 0, sx * -0.45] }));               // 怒眉
+  }
   const eyes = [];
-  for (const sx of [-1, 1]) { const e = mk('sphere', [sx * 0.075, 0.04, 0.14], [0.026, 0.02, 0.018], '#f2c43a', { emis: [0.5, 0.35, 0.05], spec: 60 }); headG.add(e); eyes.push(e); }
+  for (const sx of [-1, 1]) { const e = mk('sphere', [sx * 0.075, 0.04, 0.14], [0.028, 0.019, 0.018], '#ffd23a', { emis: [1, 0.75, 0.15], spec: 60, rim: 0 }); e.add(mk('sphere', [0, 0, 0.55], [0.25, 0.75, 0.4], '#120c06', { rim: 0 })); headG.add(e); eyes.push(e); }
   const jaw = mk('sphere', [0, -0.1, 0.2], [0.07, 0.03, 0.12], c2); headG.add(jaw);
-  const tailG = grp({ pos: [0, 0.72, -0.48] }); tailG.add(mk('sphere', [0, -0.12, -0.18], [0.09, 0.09, 0.26], c1, { fur, rot: [0.7, 0, 0] }));
+  jaw.add(mk('sphere', [0, 0.6, 0.1], [0.75, 0.5, 0.8], '#7a2a2a', { rim: 0 }));
+  const tailG = grp({ pos: [0, 0.72, -0.48] });
+  tailG.add(mk('sphere', [0, -0.08, -0.12], [0.1, 0.1, 0.2], c1, { fur: furL, rot: [0.6, 0, 0] }), mk('sphere', [0, -0.2, -0.28], [0.1, 0.1, 0.18], c3, { fur: furL, rot: [0.9, 0, 0] }), mk('sphere', [0, -0.3, -0.38], [0.07, 0.07, 0.1], c2, { fur, rot: [1.1, 0, 0] }));
   bodyG.add(headG, tailG); root.add(sh, bodyG);
-  return { root, bodyG, headG, legs, tailG, eyes, jaw };
+  return { root, bodyG, headG, legs, tailG, eyes, jaw, body: [Bw, chest, sh2, saddle, ruff, H0] };
 };
 /* ---------- S 級狼人 ---------- */
 MD.werewolf = function () {
@@ -2065,7 +2105,10 @@ MD.werewolf = function () {
     legs.push(hip); bodyG.add(hip);
   }
   const torso = grp({ pos: [0, 1.75, 0.15], rot: [0.35, 0, 0] });
-  torso.add(mk('sphere', [0, 0, 0], [0.55, 0.62, 0.42], c1, { fur }), mk('sphere', [0, 0.05, 0.24], [0.4, 0.42, 0.25], c2, { fur }), mk('sphere', [0, 0.5, -0.05], [0.5, 0.32, 0.4], c1, { fur }));
+  const T0 = mk('sphere', [0, 0, 0], [0.55, 0.62, 0.42], c1, { fur }), T1 = mk('sphere', [0, 0.05, 0.24], [0.4, 0.42, 0.25], c2, { fur }), T2 = mk('sphere', [0, 0.5, -0.05], [0.5, 0.32, 0.4], c1, { fur });
+  torso.add(T0, T1, T2);
+  for (let i = 0; i < 6; i++) torso.add(mk('cone6', [0, 0.62 - i * 0.2, -0.3 - Math.sin(i * 0.5) * 0.12], [0.05, 0.2 - i * 0.02, 0.05], '#1c1819', { rot: [-0.9 - i * 0.12, 0, 0], spec: 30 }));
+  for (const sx of [-1, 1]) for (let i = 0; i < 3; i++) torso.add(mk('box', [sx * (0.1 + i * 0.07), 0.12 - i * 0.07, 0.47], [0.015, 0.2, 0.01], '#ff4a2a', { rot: [0.2, 0, sx * 0.5], emis: [1, 0.2, 0.05], rim: 0 }));
   const arms = [];
   for (const sx of [-1, 1]) {
     const sh2 = grp({ pos: [sx * 0.6, 0.35, 0.05] });
@@ -2080,7 +2123,7 @@ MD.werewolf = function () {
   for (const sx of [-1, 1]) { const e = mk('sphere', [sx * 0.13, 0.06, 0.24], [0.045, 0.03, 0.03], '#ff3a2a', { emis: [1, 0.15, 0.05], rim: 0 }); headG.add(e); eyes.push(e); }
   const aura = n('sphere', { pos: [0, 1.6, 0], scl: [1.4, 1.7, 1.2], col: '#8a1a2a', alpha: 0.12, emis: [0.4, 0, 0.05], rim: 0 });
   torso.add(headG); bodyG.add(torso, aura); root.add(sh, bodyG);
-  return { root, bodyG, torso, headG, legs, arms, eyes, aura };
+  return { root, bodyG, torso, headG, legs, arms, eyes, aura, body: [T0, T1, T2] };
 };
 
 /* ---------- 兔籠 ---------- */
@@ -2804,7 +2847,9 @@ const G3 = window.G3, BA = window.BA, PI = Math.PI, TAU = PI * 2;
 const SB = window.SB = window.SB || {};
 const hex = G3.hex, mix = BA.mix3;
 SB.LOOKS = {
-  red: { leg: .5, main: hex('#bf6a30'), white: hex('#efe1cb'), dark: hex('#8a4a22'), backDark: .2, cheek: 1.05, eyeOpen: .55, brow: hex('#efd9b8'), name: '胖紅柴' },
+  red: { leg: .5, fat: 1.12, main: hex('#bf6a30'), white: hex('#efe1cb'), dark: hex('#8a4a22'), backDark: .2, cheek: 1.05, eyeOpen: .55, brow: hex('#efd9b8'), name: '胖紅柴' },
+  black: { leg: .5, fat: 1.1, main: hex('#231915'), white: hex('#f0e2c8'), dark: hex('#171110'), backDark: .35, cheek: 1.08, eyeOpen: .6, brow: hex('#e2a35e'), name: '胖黑柴' },
+  sesame: { leg: .5, fat: 1.1, main: hex('#a8683a'), white: hex('#f0e3cc'), dark: hex('#3a2418'), backDark: .55, cheek: 1.05, eyeOpen: .58, brow: hex('#efd9b8'), name: '胖芝麻柴' },
 };
 SB.COL = { nose: hex('#1b1513'), iris: hex('#2a1a10'), pupil: hex('#0c0807'), sclera: hex('#f1ece2'), lid: hex('#2a1c16'), tongue: hex('#e0727a'), mouth: hex('#3a1e1c'), claw: hex('#3a2e28'), earIn: hex('#f0c9b4'), pad: hex('#4a3530') };
 /* 關節世界座標（綁定姿勢，左側；右側自動鏡像） */
@@ -3146,8 +3191,8 @@ SB.makeClips = function (inst) {
 SB.solve = function (inst) { for (const nd of inst.frame) { M4.trs(nd.pos, nd.rot, nd.scl, nd.L); if (nd.par) M4.mul(nd.par.Rm, nd.L, nd.Rm); else nd.Rm.set(M4.id()); } };
 const frameOf = inst => { inst.frame = []; (function w(nd, par) { if (nd.mesh) return; nd.par = par; inst.frame.push(nd); nd.Rm = nd.Rm || new Float32Array(16); nd.L = nd.L || new Float32Array(16); for (const k of nd.kids) w(k, nd); })(inst.rig.motion, null); };
 SB.create = function (opts) {
-  opts = opts || {}; const look = 'red', pose = 'sit';
-  const inst = { look, pose, fat: opts.fat || (look === 'red' ? 1.12 : 1), J: SB.joints(pose, SB.LOOKS[look].leg || 1), leg: SB.LOOKS[look].leg || 1, light: { pos: [0, 1, 0], col: [0, 0, 0] }, UNIT_CM: 50, shake: 0 };
+  opts = opts || {}; const look = SB.LOOKS[opts.look] ? opts.look : 'red', pose = 'sit';
+  const inst = { look, pose, fat: opts.fat || SB.LOOKS[look].fat || 1, J: SB.joints(pose, SB.LOOKS[look].leg || 1), leg: SB.LOOKS[look].leg || 1, light: { pos: [0, 1, 0], col: [0, 0, 0] }, UNIT_CM: 50, shake: 0 };
   inst.look_ = SB.LOOKS[look]; inst.rig = SB.buildRig(inst); inst.root = inst.rig.root; inst.bones = inst.rig.bones;
   frameOf(inst); SB.solve(inst); SB.buildBody(inst, opts.res); SB.decorate(inst); frameOf(inst); SB.solve(inst);
   inst.fx = BA.makeFx(inst);
@@ -3447,26 +3492,33 @@ W3.stepDog = function (a, d, dt, T) {
   m.root.pos[0] = a.x; m.root.pos[2] = a.z; m.root.rot[1] = a.yaw;
   if (a.lunge) { a.lunge -= dt * 3; const k = Math.max(0, Math.sin(a.lunge * Math.PI)); m.root.pos[0] += Math.sin(a.yaw) * k * 0.5; m.root.pos[2] += Math.cos(a.yaw) * k * 0.5; m.bodyG.rot[0] = -k * 0.4; if (a.lunge <= 0) a.lunge = 0; }
   for (const b of m.body) b.flash = Math.max(0, (b.flash || 0) - dt * 3);
+  if (a.cheer > 0) { a.cheer -= dt; const k = Math.abs(Math.sin(a.cheer * 7)); m.bodyG.pos[1] = k * 0.22; m.bodyG.rot[0] = -0.3 * k; m.tailG.rot[1] = Math.sin(T * 30) * 0.8; m.tongue.visible = true; }
 };
 
 /* ---------- 夜襲演出 ---------- */
+W3.WSC = 2;   /* 狼與狼人體型 ×2 */
 W3.startRaid = function (res) {
   F.hold = true;
   const A = { res, t: 0, phase: 0, wolves: [], pairs: [] };
   const n = res.S ? 1 : res.n;
   for (let i = 0; i < n; i++) {
-    const m = res.S ? MD.werewolf() : MD.wolf();
-    const w = { m, x: -17 - i * 1.3, z: 6 + (i - n / 2) * 1.2, yaw: Math.PI / 2, ph: Math.random() * 9, hp: 1, S: res.S };
-    m.root.pos = [w.x, 0, w.z]; m.root.rot = [0, w.yaw, 0]; W3.dyn.add(m.root); A.wolves.push(w);
+    const m = res.S ? MD.werewolf() : MD.wolf(i + (G.day || 0));
+    const w = { m, x: -17 - i * 2.2, z: 6 + (i - n / 2) * 2.1, yaw: Math.PI / 2, ph: Math.random() * 9, hp: 1, S: res.S };
+    m.root.scl = [W3.WSC, W3.WSC, W3.WSC]; m.root.pos = [w.x, 0, w.z]; m.root.rot = [0, w.yaw, 0]; W3.dyn.add(m.root); A.wolves.push(w);
   }
   /* 狗衝向狼 */
   const dogs = [...W3.dogs.values()];
   dogs.forEach((a, i) => { a.fight = 1; a.tx = -5.6 + (i % 2) * 0.6; a.tz = 6 + (i - dogs.length / 2) * 0.9; });
   A.dogs = dogs;
+  const BF = res.buffs || [];
+  if (BF.includes('armor')) dogs.forEach(a => { a.shield = G3.n('sphere', { col: '#7ac8ff', alpha: 0.22, emis: [0.2, 0.45, 0.8], rim: 1.2, pos: [0, 0.45, 0], scl: [0.55, 0.55, 0.7] }); a.m.root.add(a.shield); });
+  if (BF.length) dogs.forEach((a, i) => W3.fxAt(BF.map(b => F.RBUFF[b].ic).join(''), [a.x, 1.2, a.z], 2.4, 0.6 + i * 0.15, '#9fdcff'));
   W3.raidAnim = A;
   for (const [, ra] of W3.rab) ra.t = 0;
   W3.banner(res.S ? '💀 S 級狼人出現了！' : `🐺 ${res.n} 隻野狼來襲！`, '#a8281e', 3);
-  W3.cam.focusRaid = 1;
+  W3.cam.focusRaid = 1; A.q = []; W3.shake(res.S ? 0.9 : 0.4);
+  A.wolves.forEach((w, i) => W3.fxAt(res.S ? '嗷嗚——！！' : '嗷嗚——', [w.x + 2, res.S ? 5 : 2.5, w.z], 1.8, 0.4 + i * 0.25, res.S ? '#ff6a5a' : '#dfe6ff'));
+  if (window.__SFX) setTimeout(() => window.__SFX.howl(), 300);
 };
 W3.stepRaid = function (dt, T) {
   const A = W3.raidAnim; if (!A) return;
@@ -3475,36 +3527,42 @@ W3.stepRaid = function (dt, T) {
   for (const w of A.wolves) {
     const m = w.m;
     let tx = w.tx, tz = w.tz;
-    if (A.phase === 0) { tx = -6.8 - (A.wolves.indexOf(w) % 2) * 0.7; tz = w.z; }
+    if (A.phase === 0) { tx = -7.4 - (A.wolves.indexOf(w) % 2) * 1.4; tz = w.z; }
     let moving = false;
     if (tx != null) { const dx = tx - w.x, dz = tz - w.z, d = Math.hypot(dx, dz); if (d > 0.1) { moving = true; const sp = w.S ? 3.8 : 5.2, k = Math.min(d, sp * dt); w.x += dx / d * k; w.z += dz / d * k; w.yaw = angLerp(w.yaw, Math.atan2(dx, dz), Math.min(1, dt * 8)); } }
     w.ph += dt * (moving ? 16 : 0);
     if (w.S) { const s = moving ? Math.sin(w.ph * 0.6) * 0.5 : 0; m.legs[0].rot[0] = s; m.legs[1].rot[0] = -s; m.arms[0].rot[0] = -s * 0.8 - (A.phase === 1 ? Math.max(0, Math.sin(T * 6)) * 1.4 : 0); m.arms[1].rot[0] = s * 0.8 - (A.phase === 1 ? Math.max(0, Math.sin(T * 6 + 1.5)) * 1.4 : 0); m.aura.scl[0] = 1.4 + Math.sin(T * 4) * 0.1; m.headG.rot[0] = A.phase === 0 && !moving ? -0.6 : 0; }
     else { const s = moving ? Math.sin(w.ph) * 0.7 : 0; m.legs.forEach((l, i) => (l.rot[0] = i === 0 || i === 3 ? s : -s)); m.tailG.rot[0] = A.phase === 2 && res.repelled ? 0.8 : 0; m.jaw.pos[1] = -0.1 - (A.phase === 1 ? Math.max(0, Math.sin(T * 10)) * 0.05 : 0); }
     if (w.lunge) { w.lunge -= dt * 2.6; const k = Math.max(0, Math.sin(w.lunge * Math.PI)); m.bodyG.pos[2] = k * 0.6; m.bodyG.rot[0] = -k * 0.3; if (w.lunge <= 0) { w.lunge = 0; m.bodyG.pos[2] = 0; } }
-    if (w.carry) { const d = w.carry; d.m.root.pos = [w.x + Math.sin(w.yaw) * 0.9, w.S ? 1.4 : 0.6, w.z + Math.cos(w.yaw) * 0.9]; d.m.root.rot = [0.3, w.yaw + 1.5, 1.2]; }
+    if (w.carry) { const d = w.carry; d.m.root.pos = [w.x + Math.sin(w.yaw) * 1.8, w.S ? 2.8 : 1.2, w.z + Math.cos(w.yaw) * 1.8]; d.m.root.rot = [0.3, w.yaw + 1.5, 1.2]; }
     m.root.pos[0] = w.x; m.root.pos[2] = w.z; m.root.rot[1] = w.yaw;
     m.bodyG.pos[1] = moving && !w.S ? Math.abs(Math.sin(w.ph)) * 0.06 : 0;
+    if (m.body) for (const b of m.body) b.flash = Math.max(0, (b.flash || 0) - dt * 3);
+    if (moving && Math.random() < dt * 10) W3.dust([w.x - Math.sin(w.yaw) * 0.8, 0.05, w.z - Math.cos(w.yaw) * 0.8]);
   }
+  for (const q of A.q) { q.t -= dt; if (q.t <= 0) q.fn(); }
+  A.q = A.q.filter(q => q.t > 0);
   /* 階段 0：靠近；1：打鬥；2：結果；3：離開 */
-  const arrived = A.wolves.every(w => w.x > -7.6 - (A.wolves.indexOf(w) % 2) * 0.7);
+  const arrived = A.wolves.every(w => w.x > -8.2 - (A.wolves.indexOf(w) % 2) * 1.4);
   if (A.phase === 0 && (arrived || A.t > 7)) {
     A.phase = 1; A.t = 0;
     if (!A.dogs.length) { A.phase = 2; A.t = 0; }
-    A.dogs.forEach((d, i) => { const w = A.wolves[i % A.wolves.length]; d.tx = w.x + 0.9 + (i >= A.wolves.length ? 0.5 : 0); d.tz = w.z + (i >= A.wolves.length ? 0.6 : 0); d.foe = w; });
+    A.dogs.forEach((d, i) => { const w = A.wolves[i % A.wolves.length]; d.tx = w.x + (w.S ? 1.7 : 2.0) + (i >= A.wolves.length ? 0.4 : 0); d.tz = w.z + (i >= A.wolves.length ? (i % 2 ? 0.8 : -0.8) : 0); d.foe = w; });
   }
   if (A.phase === 1) {
-    for (const d of A.dogs) { if (d.foe) { d.yaw = Math.atan2(d.foe.x - d.x, d.foe.z - d.z); } if (!d.lunge && Math.random() < dt * 1.8) { d.lunge = 1; W3.puff([d.x - 0.5, 0.5, d.z]); } }
-    for (const w of A.wolves) if (!w.lunge && Math.random() < dt * (w.S ? 1.4 : 1.6)) { w.lunge = 1; const d = A.dogs.filter(x => x.foe === w)[0] || A.dogs[0]; if (d) { for (const b of d.m.body) b.flash = 0.8; const info = res.dogs.find(x => x.id === d.id); W3.fxAt(`-${Math.max(1, Math.round((info ? info.dmg : 10) / 4))}`, [d.x, 1.1, d.z], 1, 0, '#ff5a4a'); W3.puff([d.x, 0.4, d.z]); } }
-    if (Math.random() < dt * 6) { const w = U.pick(A.wolves); W3.puff([w.x + rnd(0, 1), rnd(0.2, 0.9), w.z + rnd(-0.4, 0.4)]); }
+    for (const d of A.dogs) { if (d.foe) { d.yaw = Math.atan2(d.foe.x - d.x, d.foe.z - d.z); } if (!d.lunge && Math.random() < dt * 1.8) { d.lunge = 1; W3.dust([d.x, 0.05, d.z]); const w = d.foe; if (w) A.q.push({ t: 0.16, fn: () => { const big = Math.random() < 0.25; W3.hit([w.x, w.S ? 2.8 : 1.3, w.z], { col: '#fff4c2', big, ang: -0.6 }); if (w.m.body) for (const b of w.m.body) b.flash = 0.9; w.hp = Math.max(A.res.repelled ? 0.05 : 0.4, w.hp - (big ? 0.16 : 0.09) / 1.2); W3.fxAt(big ? '會心一咬！' : U.pick(['咬！', '汪！', '撲！']), [w.x + rnd(-0.5, 0.5), (w.S ? 4.8 : 2.4) + rnd(0, 0.4), w.z], 0.9, 0, big ? '#ffd23a' : '#ffffff'); W3.shake(big ? 0.35 : 0.15); } }); } }
+    for (const w of A.wolves) if (!w.lunge && Math.random() < dt * (w.S ? 1.4 : 1.6)) { w.lunge = 1; const d = A.dogs.filter(x => x.foe === w)[0] || A.dogs[0]; if (d) { A.q.push({ t: 0.18, fn: () => { const info = res.dogs.find(x => x.id === d.id); if (info && info.dodge) { W3.fxAt('閃避！', [d.x + 0.3, 1.1, d.z], 0.9, 0, '#9fdcff'); W3.dust([d.x, 0.05, d.z]); d.lunge = d.lunge || 0.6; return; } for (const b of d.m.body) b.flash = 0.8; if (d.shield) { d.shield.flash = 0.9; W3.ring([d.x, 0.5, d.z], '#7ac8ff', 40); } W3.hit([d.x, 0.5, d.z], { col: w.S ? '#ff3a3a' : '#ff8a5a', big: w.S, ang: 0.7, claw: 1 }); W3.fxAt(`-${Math.max(1, Math.round((info ? info.dmg : 10) / 4))}`, [d.x, 1.1, d.z], 1, 0, '#ff5a4a'); W3.shake(w.S ? 0.6 : 0.25); if (w.S) W3.ring([w.x, 0.05, w.z], '#ff4a3a', 110); } }); } }
+    if (Math.random() < dt * 6) { const w = U.pick(A.wolves); W3.dust([w.x + rnd(0, 1), rnd(0.05, 0.3), w.z + rnd(-0.4, 0.4)]); }
     if (A.t > (res.S ? 5 : 3.6)) {
       A.phase = 2; A.t = 0;
-      if (res.repelled) { W3.banner(res.S ? '🏆 擊退狼人！獲得賞金 $1,500' : '🛡️ 看門狗擊退了狼群！', '#2f7a3a', 3); for (const w of A.wolves) { w.tx = -26; w.tz = w.z + rnd(-2, 2); } }
+      if (res.repelled) { W3.banner(res.S ? '🏆 擊退狼人！獲得賞金 $1,500' : '🛡️ 看門狗擊退了狼群！', '#2f7a3a', 3); for (const w of A.wolves) { w.tx = -26; w.tz = w.z + rnd(-2, 2); W3.fxAt('嗚嗚……', [w.x, 2.3, w.z], 1.4, 0, '#c8d0ff'); }
+        for (const w of A.wolves) w.hp = 0;
+        A.dogs.forEach((d, i) => { d.cheer = 2.4; W3.burst([d.x, 0.8, d.z], '#ffd23a', 16, i * 0.15); W3.fxAt('🏅', [d.x, 1.3, d.z], 1.8, 0.3 + i * 0.1); }); if (window.__SFX) window.__SFX.win(); }
       else {
         if (res.taken != null) { const d = W3.dogs.get(res.taken); const w = A.wolves[0]; if (d) { d.leaving = 1; w.carry = d; } W3.banner(`😢 「${res.takenName}」被狼人叼走了……`, '#5a2030', 3.5); }
         else W3.banner(A.dogs.length ? '狗狗擋不住，狼衝進兔舍了！' : '沒有看門狗，狼衝進兔舍了！', '#a8281e', 2.5);
         /* 前往被破壞的門 */
-        A.wolves.forEach((w, i) => { const j = res.doors[i % Math.max(1, res.doors.length)]; if (res.doors.length && !w.carry) { w.tx = HX(j) + 0.42; w.tz = HUTCH_Z + 1.3; w.door = j; } else { w.tx = -26; w.tz = w.z; } });
+        A.wolves.forEach((w, i) => { const j = res.doors[i % Math.max(1, res.doors.length)]; if (res.doors.length && !w.carry) { w.tx = HX(j) + 0.42; w.tz = HUTCH_Z + 2.1; w.door = j; } else { w.tx = -26; w.tz = w.z; } });
       }
       for (const d of A.dogs) { d.fight = 0; d.st = 'sit'; d.t = 4; }
     }
@@ -3514,6 +3572,8 @@ W3.stepRaid = function (dt, T) {
     if (A.t > 6.5 || A.wolves.every(w => w.x < -20 && w.door == null)) {
       for (const w of A.wolves) W3.dyn.kids = W3.dyn.kids.filter(k => k !== w.m.root);
       for (const [id, a] of W3.dogs) if (a.leaving) { W3.dyn.kids = W3.dyn.kids.filter(k => k !== a.m.root); W3.dogs.delete(id); }
+      for (const a of A.dogs) if (a.shield) { a.m.root.kids = a.m.root.kids.filter(k => k !== a.shield); a.shield = null; }
+      if ((res.buffs || []).includes('regen')) A.dogs.forEach((a, i) => { if (!a.leaving) { W3.burst([a.x, 0.6, a.z], '#7aff9a', 12, i * 0.1); W3.fxAt('+20', [a.x, 1.1, a.z], 1.4, i * 0.1, '#6ae08a'); } });
       W3.raidAnim = null; F.hold = false; W3.cam.focusRaid = 0;
       for (const [, ra] of W3.rab) ra.t = 0;
       F.ev.push({ k: 'raidEnd', r: res });
@@ -3523,6 +3583,19 @@ W3.stepRaid = function (dt, T) {
 W3.puff = p => W3.fx.push({ k: 'puff', p, t: 0, dur: 0.6, r: rnd(10, 18) });
 W3.fxAt = (txt, p, dur, delay, col) => W3.fx.push({ k: 'txt', txt, p: p.slice(), t: -(delay || 0), dur: dur || 1.4, col });
 W3.banner = (m, col, dur) => { W3.ban = { m, col, t: 0, dur }; };
+/* 打鬥特效：爪痕、衝擊星、火花、震波、塵土、鏡頭震動 */
+W3.shk = 0; W3.shake = a => { W3.shk = Math.min(1.2, Math.max(W3.shk, a)); };
+W3.dust = p => W3.fx.push({ k: 'dust', p: p.slice(), t: 0, dur: 0.7, r: rnd(6, 11), vx: rnd(-14, 14) });
+W3.ring = (p, col, r, delay) => W3.fx.push({ k: 'ring', p: p.slice(), t: -(delay || 0), dur: 0.5, col, r: r || 50 });
+W3.burst = (p, col, nn, delay) => { const P = []; for (let i = 0; i < (nn || 12); i++) { const a = Math.random() * 6.283, v = rnd(60, 190); P.push([Math.cos(a) * v, Math.sin(a) * v - 60, rnd(1.5, 3.2)]); } W3.fx.push({ k: 'spark', p: p.slice(), t: -(delay || 0), dur: 0.75, col, P }); };
+W3.hit = (p, o) => {
+  o = o || {}; const d = o.delay || 0;
+  W3.fx.push({ k: 'slash', p: p.slice(), t: -d, dur: 0.32, col: o.col || '#fff', ang: o.ang || 0, sz: o.big ? 1.6 : 1, claw: o.claw });
+  W3.fx.push({ k: 'star', p: p.slice(), t: -d - 0.05, dur: 0.28, col: o.col || '#fff', sz: o.big ? 1.7 : 1 });
+  W3.burst(p, o.big ? '#ffd23a' : '#ffe9b0', o.big ? 22 : 12, d + 0.05);
+  if (o.big) W3.ring([p[0], 0.05, p[2]], '#fff0b0', 60, d);
+  if (window.__SFX) setTimeout(() => { window.__SFX.slash(); window.__SFX.hit(); }, d * 1000);
+};
 
 /* ---------- 光線與天空 ---------- */
 const K = [[0, '#0e1632', '#24304e', 0], [4.5, '#1a2244', '#3a3c66', 0.05], [5.8, '#f0a070', '#fbd0a0', 0.5], [7.5, '#9ccbea', '#dceefa', 1], [16.5, '#9ccbea', '#e2f2fa', 1], [18.2, '#f08a5c', '#f8c08a', 0.55], [19.4, '#3a3a6a', '#6a5478', 0.1], [20.5, '#0e1632', '#24304e', 0], [24, '#0e1632', '#24304e', 0]];
@@ -3565,16 +3638,17 @@ W3.frame = function (dt, T, W, H) {
   const lv = clamp(G.hay / Math.max(1, F.dailyNeed().hay * 3), 0, 1); W3.trough.hay.scl[1] = 0.02 + lv * 0.1; W3.trough.hay.visible = G.hay > 0.05; W3.trough.pel.forEach((p, i) => (p.visible = G.pel > i * 0.6));
   /* 鏡頭 */
   const c = W3.cam;
-  let tg = [0, 0.4, W / H < 1 ? -1.4 : 0.3];
+  let tg = c.home ? c.home.slice() : [0, 0.4, W / H < 1 ? -1.4 : 0.3];
   if (W3.sel) { const p = W3.selPos(); if (p) tg = [p[0], p[1] + 0.25, p[2]]; }
-  if (c.focusRaid) { const A = W3.raidAnim; const w = A && A.wolves.find(q => q.door != null) || (A && A.wolves[0]); tg = w && w.x > -14 ? [w.x * 0.6 - 2, 0.6, w.z * 0.8] : [-5.5, 0.6, 5.5]; }
+  if (c.focusRaid) { const A = W3.raidAnim; const w = A && A.wolves.find(q => q.door != null) || (A && A.wolves[0]); tg = w && w.x > -14 ? [w.x * 0.6 - 2, A.res.S ? 1.6 : 0.9, w.z * 0.8] : [-5.5, A && A.res.S ? 1.6 : 0.9, 5.5]; }
   for (let i = 0; i < 3; i++) c.ctgt[i] = lerp(c.ctgt[i], tg[i], Math.min(1, dt * 3));
   const asp = W / H, fit = asp < 1 ? 1 + (1 - asp) * 1.25 : 1;
-  const dist = c.focusRaid ? 10 * fit : W3.sel ? 4.6 * (asp < 1 ? 1.25 : 1) : c.dist * fit;
+  const dist = c.focusRaid ? (W3.raidAnim && W3.raidAnim.res.S ? 13 : 11.5) * fit : W3.sel ? 4.6 * (asp < 1 ? 1.25 : 1) : c.dist * (c.home ? 1 : fit);
   const pit = W3.sel ? 0.5 : c.pitch;
   c.cp = lerp(c.cp || pit, pit, Math.min(1, dt * 3));
   c.cdist = lerp(c.cdist || dist, dist, Math.min(1, dt * 3));
   c.eye = [c.ctgt[0] + Math.sin(c.yaw) * Math.cos(c.cp) * c.cdist, c.ctgt[1] + Math.sin(c.cp) * c.cdist, c.ctgt[2] + Math.cos(c.yaw) * Math.cos(c.cp) * c.cdist];
+  if (W3.shk > 0) { const a = W3.shk * W3.shk * 0.22; W3.shk = Math.max(0, W3.shk - dt * 2.4); for (let i = 0; i < 3; i++) c.eye[i] += (Math.random() - 0.5) * a; }
   const env = W3.env();
   W3.sun.pos = env.day > 0.05 ? [env.sunD[0] * 140, env.sunD[1] * 140, env.sunD[2] * 140] : [-60, 110, -90];
   W3.sun.emis = env.day > 0.05 ? [1, 0.92, 0.7] : [0.95, 0.95, 1]; W3.sun.scl = env.day > 0.05 ? [5, 5, 5] : F.fullMoon() ? [7, 7, 7] : [4, 4, 4]; W3.sun.visible = G.weather !== '雨' && G.weather !== '颱風';
@@ -3585,7 +3659,7 @@ W3.frame = function (dt, T, W, H) {
   G3.view.W = W; G3.view.H = H;
   W3.drawOverlay(dt, T, W, H, dpr, env);
 };
-W3.selPos = function () { const s = W3.sel; if (!s) return null; if ((s.type === 'shiba' || s.type === 'egg') && W3.shibaPos) return W3.shibaPos(); const a = s.type === 'rabbit' ? W3.rab.get(s.id) : s.type === 'dog' ? W3.dogs.get(s.id) : null; return a ? [a.x, a.y || 0, a.z] : null; };
+W3.selPos = function () { const s = W3.sel; if (!s) return null; if ((s.type === 'shiba' || s.type === 'egg') && W3.shibaPos) return W3.shibaPos(s.id); const a = s.type === 'rabbit' ? W3.rab.get(s.id) : s.type === 'dog' ? W3.dogs.get(s.id) : null; return a ? [a.x, a.y || 0, a.z] : null; };
 
 /* ---------- 2D 特效層 ---------- */
 W3.drawOverlay = function (dt, T, W, H, dpr, env) {
@@ -3604,12 +3678,24 @@ W3.drawOverlay = function (dt, T, W, H, dpr, env) {
   if (W3.sel && W3.sel.type === 'rabbit') { const a = W3.rab.get(W3.sel.id), r = G.rabbits.find(q => q.id === W3.sel.id); if (a && r) { const s = G3.project([a.x, a.y + (a.kit ? 0.55 : 0.9), a.z]); if (s) { const t = `${r.nm} ${F.PERS[r.pers].ic}`; c.font = '700 14px "Huninn","Noto Sans TC",sans-serif'; const w = c.measureText(t).width + 18; c.fillStyle = 'rgba(255,253,248,0.95)'; rr(c, s[0] - w / 2, s[1] - 28, w, 24, 12); c.fill(); c.fillStyle = '#2b2622'; c.fillText(t, s[0], s[1] - 15); c.fillStyle = 'rgba(255,253,248,0.95)'; c.beginPath(); c.moveTo(s[0] - 6, s[1] - 4); c.lineTo(s[0] + 6, s[1] - 4); c.lineTo(s[0], s[1] + 3); c.fill(); } } }
   /* 狗的血條 */
   for (const [id, a] of W3.dogs) { const d = G.dogs.find(q => q.id === id); if (!d || (d.hp >= 99 && !W3.raidAnim)) continue; const s = G3.project([a.x, 1.15, a.z]); if (!s) continue; c.fillStyle = 'rgba(0,0,0,.45)'; rr(c, s[0] - 22, s[1], 44, 7, 3); c.fill(); c.fillStyle = d.hp < 30 ? '#e8402a' : d.hp < 60 ? '#e8b03a' : '#5ac84a'; rr(c, s[0] - 21, s[1] + 1, 42 * d.hp / 100, 5, 2); c.fill(); }
+  /* 狼的血條 */
+  if (W3.raidAnim) for (const w of W3.raidAnim.wolves) { if (w.x < -15) continue; const s = G3.project([w.x, (w.S ? 3.9 : 2.1), w.z]); if (!s) continue; const bw = w.S ? 70 : 50; c.fillStyle = 'rgba(0,0,0,.5)'; rr(c, s[0] - bw / 2 - 1, s[1] - 1, bw + 2, 8, 3); c.fill(); c.fillStyle = w.S ? '#c02a4a' : '#d8502a'; rr(c, s[0] - bw / 2, s[1], bw * Math.max(0, w.hp), 6, 2); c.fill(); }
+  /* 狼眼夜光 */
+  if (W3.raidAnim) { c.save(); c.globalCompositeOperation = 'lighter'; for (const w of W3.raidAnim.wolves) { const Z = W3.WSC, hy = (w.S ? 2.6 : 0.9) * Z, fw = (w.S ? 0.62 : 0.66) * Z; for (const sx of [-1, 1]) { const ex = w.x + Math.sin(w.yaw) * fw + Math.cos(w.yaw) * sx * (w.S ? 0.13 : 0.075) * Z, ez = w.z + Math.cos(w.yaw) * fw - Math.sin(w.yaw) * sx * (w.S ? 0.13 : 0.075) * Z; const s = G3.project([ex, hy, ez]); if (!s) continue; const g = c.createRadialGradient(s[0], s[1], 0, s[0], s[1], w.S ? 24 : 15); g.addColorStop(0, w.S ? 'rgba(255,80,40,.9)' : 'rgba(255,220,90,.85)'); g.addColorStop(1, 'rgba(255,120,0,0)'); c.fillStyle = g; c.beginPath(); c.arc(s[0], s[1], w.S ? 24 : 15, 0, 6.3); c.fill(); } } c.restore(); }
   /* 文字特效 */
   for (const f of W3.fx) {
     f.t += dt; if (f.t < 0) continue;
     const k = f.t / f.dur;
-    if (f.k === 'txt') { const s = G3.project([f.p[0], f.p[1] + k * 0.7, f.p[2]]); if (!s) continue; c.globalAlpha = Math.max(0, 1 - k * k); c.font = f.col ? '900 20px "Huninn",sans-serif' : `${18 + (1 - k) * 6}px sans-serif`; if (f.col) { c.lineWidth = 4; c.strokeStyle = 'rgba(0,0,0,.6)'; c.strokeText(f.txt, s[0], s[1]); c.fillStyle = f.col; } c.fillText(f.txt, s[0], s[1]); c.globalAlpha = 1; }
+    if (f.k === 'txt') { const s = G3.project([f.p[0], f.p[1] + k * 0.7, f.p[2]]); if (!s) continue; c.globalAlpha = Math.max(0, 1 - k * k); c.font = f.col ? `900 ${Math.round(20 * (k < 0.12 ? 1 + (0.12 - k) * 6 : 1))}px "Huninn",sans-serif` : `${18 + (1 - k) * 6}px sans-serif`; if (f.col) { c.lineWidth = 4; c.strokeStyle = 'rgba(0,0,0,.6)'; c.strokeText(f.txt, s[0], s[1]); c.fillStyle = f.col; } c.fillText(f.txt, s[0], s[1]); c.globalAlpha = 1; }
     else if (f.k === 'puff') { const s = G3.project(f.p); if (!s) continue; c.globalAlpha = Math.max(0, 0.7 * (1 - k)); c.fillStyle = '#efe6d6'; c.beginPath(); c.arc(s[0], s[1], f.r * (0.6 + k * 1.4), 0, 6.3); c.fill(); c.globalAlpha = 1; }
+    else if (f.k === 'dust') { const s = G3.project(f.p); if (!s) continue; c.globalAlpha = Math.max(0, 0.55 * (1 - k)); c.fillStyle = '#b8a07a'; c.beginPath(); c.ellipse(s[0] + f.vx * k, s[1] - k * 14, f.r * (0.5 + k * 1.3), f.r * (0.35 + k * 0.8), 0, 0, 6.3); c.fill(); c.globalAlpha = 1; }
+    else if (f.k === 'ring') { const s = G3.project(f.p); if (!s) continue; c.globalAlpha = Math.max(0, 1 - k); c.strokeStyle = f.col; c.lineWidth = 6 * (1 - k) + 1; c.beginPath(); c.ellipse(s[0], s[1], f.r * (0.2 + k), f.r * (0.2 + k) * 0.38, 0, 0, 6.3); c.stroke(); c.globalAlpha = 1; }
+    else if (f.k === 'spark') { const s = G3.project(f.p); if (!s) continue; c.save(); c.globalCompositeOperation = 'lighter'; c.globalAlpha = Math.max(0, 1 - k); c.fillStyle = f.col; const tt = f.t; for (const [vx, vy, r] of f.P) { const x = s[0] + vx * tt, y = s[1] + vy * tt + 260 * tt * tt; c.beginPath(); c.arc(x, y, r * (1 - k * 0.6), 0, 6.3); c.fill(); } c.restore(); }
+    else if (f.k === 'star') { const s = G3.project(f.p); if (!s) continue; const R0 = 34 * f.sz * (0.4 + k * 0.9); c.save(); c.globalCompositeOperation = 'lighter'; c.globalAlpha = Math.max(0, 1 - k); c.translate(s[0], s[1]); c.rotate(k * 0.6); c.fillStyle = f.col; c.beginPath(); for (let i = 0; i < 16; i++) { const r = i % 2 ? R0 * 0.32 : R0 * (i % 4 ? 0.8 : 1.15), a = i / 16 * 6.283; c.lineTo(Math.cos(a) * r, Math.sin(a) * r); } c.closePath(); c.fill(); c.fillStyle = '#ffffff'; c.beginPath(); c.arc(0, 0, R0 * 0.22, 0, 6.3); c.fill(); c.restore(); }
+    else if (f.k === 'slash') { const s = G3.project(f.p); if (!s) continue; const L = 46 * f.sz, prog = Math.min(1, k * 2.4); c.save(); c.translate(s[0], s[1]); c.rotate(f.ang); c.globalAlpha = Math.max(0, 1 - Math.max(0, k - 0.45) * 1.8); c.lineCap = 'round';
+      for (let j = -1; j <= 1; j++) { if (!f.claw && j) continue; const off = j * 11 * f.sz; c.beginPath(); for (let q = 0; q <= 12; q++) { const u = q / 12 * prog, x = (u - 0.5) * 2 * L, y = off - Math.sin(u * Math.PI) * 10 * f.sz; q ? c.lineTo(x, y) : c.moveTo(x, y); }
+        c.strokeStyle = f.col; c.lineWidth = (f.claw ? 5 : 9) * f.sz * (1 - k * 0.6); c.shadowColor = f.col; c.shadowBlur = 14; c.stroke(); c.strokeStyle = '#ffffff'; c.lineWidth = (f.claw ? 1.6 : 3) * f.sz; c.shadowBlur = 0; c.stroke(); }
+      c.restore(); }
   }
   W3.fx = W3.fx.filter(f => f.t < f.dur);
   /* 天氣 */
@@ -3676,24 +3762,27 @@ W3.bindInput = function () {
 (function () {
 'use strict';
 const W3 = window.W3; if (!W3) return;
-const PEN = W3.PEN, GATE = [0.4, PEN.z1], EGG = [-2.2, 5.3], YARD = { x0: -3.4, x1: 3.6, z0: 4.4, z1: 7.6 }, SC = 1.0;
+const PEN = W3.PEN, GATE = [0.4, PEN.z1], YARD = { x0: -3.4, x1: 3.6, z0: 4.4, z1: 7.6 }, SC = 1.0;
 const rnd = (a, b) => a + Math.random() * (b - a), clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const angTo = (a, b) => { let d = b - a; return Math.atan2(Math.sin(d), Math.cos(d)); };
-let egg = null, A = null;
+const SLOT = { shiba: { E: [-2.2, 5.3], egg: null, A: null, sp: ['#e8a04a', '#d97a3a', '#c8642a'] }, shiba2: { E: [-0.6, 6.3], egg: null, A: null, sp: ['#3a2a24', '#5a3a2a', '#d9a066'] } };
+const KEYS = ['shiba', 'shiba2'];
+const rm = o => { W3.dyn.kids = W3.dyn.kids.filter(k => k !== o); };
 const night = () => { const h = G.min / 60; return h >= 21 || h < 5.5; };
 
-function makeEgg() {
-  const g = G3.grp(), shell = G3.n('sphere', { col: [0.98, 0.94, 0.86], spec: 30, rim: 0.4, scl: [0.26, 0.34, 0.26], pos: [0, 0.32, 0] }); g.add(shell);
-  const spots = [[0.2, 0.42, 0.12, '#e8a04a'], [-0.18, 0.3, 0.14, '#d97a3a'], [0.04, 0.55, -0.2, '#e8a04a'], [-0.1, 0.18, -0.21, '#c8642a'], [0.22, 0.2, -0.08, '#d97a3a'], [-0.05, 0.5, 0.21, '#c8642a']];
+function makeEgg(sl) {
+  const EGG = sl.E, SP = sl.sp, g = G3.grp(), shell = G3.n('sphere', { col: [0.98, 0.94, 0.86], spec: 30, rim: 0.4, scl: [0.26, 0.34, 0.26], pos: [0, 0.32, 0] }); g.add(shell);
+  const spots = [[0.2, 0.42, 0.12, SP[0]], [-0.18, 0.3, 0.14, SP[1]], [0.04, 0.55, -0.2, SP[0]], [-0.1, 0.18, -0.21, SP[2]], [0.22, 0.2, -0.08, SP[1]], [-0.05, 0.5, 0.21, SP[2]]];
   for (const [x, y, z, c] of spots) g.add(G3.n('sphere', { col: c, rim: 0.2, pos: [x, y, z], scl: [0.06, 0.05, 0.03], rot: [0, Math.atan2(x, z), 0] }));
+  if (sl === SLOT.shiba2) g.add(G3.n('torus', { col: [0.75, 0.55, 1], emis: [0.3, 0.15, 0.45], pos: [0, 0.32, 0], rot: [0.25, 0, 0.2], scl: [0.27, 0.27, 0.035] }));
   g.add(G3.n('torus', { col: [1, 0.85, 0.4], emis: [0.25, 0.18, 0.05], pos: [0, 0.03, 0], rot: [Math.PI / 2, 0, 0], scl: [0.34, 0.34, 0.06] }));
   g.add(G3.n('disc', { col: '#000000', alpha: 0.25, pos: [0, 0.01, 0], scl: [0.3, 1, 0.3], rim: 0 }));
   g.pos = [EGG[0], 0, EGG[1]]; W3.dyn.add(g); return g;
 }
-function makeDog() {
-  const d = window.ShibaDog.create({ look: 'red', pose: 'sit' }); d.root.scl = [SC, SC, SC]; W3.dyn.add(d.root);
-  const p = G.shiba.pos || [EGG[0], EGG[1]];
-  return { d, x: p[0], z: p[1], yaw: Math.PI, mode: 'yard', t: 1, path: [], tgt: null, spd: 0, acts: 0 };
+function makeDog(k) {
+  const S = G[k], d = window.ShibaDog.create({ look: S.look || 'red', pose: 'sit' }); d.root.scl = [SC, SC, SC]; W3.dyn.add(d.root);
+  const p = S.pos || SLOT[k].E;
+  return { d, S, k, x: p[0], z: p[1], yaw: Math.PI, mode: 'yard', t: 1 + KEYS.indexOf(k) * 2.5, path: [], tgt: null, spd: 0, acts: 0 };
 }
 /* 路徑：圍欄只能從大門進出 */
 function route(a, x, z) {
@@ -3714,7 +3803,7 @@ function nearestRabbit(a) { let best = null, bd = 1e9; for (const [id, r] of W3.
 
 /* 行為：白天在庭院；入夜後進兔舍找兔子玩，最後在兔舍裡睡覺，睡飽（8 小時）才出來 */
 function think(a, dt, minutes) {
-  const S = G.shiba, nt = night(), d = a.d; a.t -= dt; a.spd = 0;
+  const S = a.S, nt = night(), d = a.d; a.t -= dt; a.spd = 0;
   if (a.mode === 'sleep') { S.slept = (S.slept || 0) + minutes / 60; if (d.name !== 'sleep') d.play('sleep'); if (S.slept >= 8) { a.mode = 'wake'; playOnce(a, 'happy'); } return; }
   if (a.mode === 'wake') { if (a.t <= 0) { a.mode = 'leave'; route(a, rnd(YARD.x0, YARD.x1), rnd(YARD.z0, YARD.z1 - 1)); } return; }
   if (a.mode === 'leave') { d.move(0.3 / SC); if (walkStep(a, dt, 0.3)) { a.mode = 'yard'; a.t = 1; d.move(0); } return; }
@@ -3742,23 +3831,32 @@ function think(a, dt, minutes) {
   }
 }
 W3.shibaFrame = function (dt) {
-  const S = G.shiba;
-  if (!S || !window.ShibaDog) { if (egg) { W3.dyn.kids = W3.dyn.kids.filter(k => k !== egg); egg = null; } return; }
-  if (S.st === 'egg') { if (!egg) egg = makeEgg(); const k = S.q / F.EGG_Q, w = (0.03 + 0.12 * k) * Math.max(0, Math.sin(UI.t * (2 + 6 * k))) * (Math.sin(UI.t * 0.7) > 0.3 - k ? 1 : 0); egg.rot = [0, 0, w * Math.sin(UI.t * 18)]; return; }
-  if (egg) { W3.puff([egg.pos[0], 0.4, egg.pos[2]]); W3.dyn.kids = W3.dyn.kids.filter(k => k !== egg); egg = null; }
-  if (!A) A = makeDog();
-  const minutes = dt * F.MIN_PER_SEC * (G.speed || 0); think(A, dt * (G.speed ? 1 : 0), minutes);
-  if (W3.sel && W3.sel.type === 'shiba' && A.mode === 'yard' && !A.path.length) { A.yaw += angTo(A.yaw, Math.atan2(W3.cam.eye[0] - A.x, W3.cam.eye[2] - A.z)) * Math.min(1, dt * 4); }
-  A.d.root.pos = [A.x, 0, A.z]; A.d.root.rot = [0, A.yaw, 0]; A.d.update(G.speed ? dt : 0); S.pos = [+A.x.toFixed(2), +A.z.toFixed(2)];
+  if (!window.ShibaDog) return;
+  KEYS.forEach((k, i) => {
+    const S = G[k], sl = SLOT[k];
+    if (!S) { if (sl.egg) { rm(sl.egg); sl.egg = null; } if (sl.A) { rm(sl.A.d.root); sl.A = null; } return; }
+    if (S.st === 'egg') { if (!sl.egg) sl.egg = makeEgg(sl); const q = S.q / F.EGG_Q, w = (0.03 + 0.12 * q) * Math.max(0, Math.sin(UI.t * (2 + 6 * q) + i * 2)) * (Math.sin(UI.t * 0.7 + i) > 0.3 - q ? 1 : 0); sl.egg.rot = [0, 0, w * Math.sin(UI.t * 18)]; return; }
+    if (sl.egg) { W3.puff([sl.egg.pos[0], 0.4, sl.egg.pos[2]]); if (W3.burst) W3.burst([sl.egg.pos[0], 0.4, sl.egg.pos[2]], '#ffe08a', 18); rm(sl.egg); sl.egg = null; }
+    if (!sl.A) sl.A = makeDog(k);
+    const A = sl.A; A.S = S;
+    const minutes = dt * F.MIN_PER_SEC * (G.speed || 0); think(A, dt * (G.speed ? 1 : 0), minutes);
+    if (W3.sel && W3.sel.type === 'shiba' && (W3.sel.id || 0) === i && A.mode === 'yard' && !A.path.length) { A.yaw += angTo(A.yaw, Math.atan2(W3.cam.eye[0] - A.x, W3.cam.eye[2] - A.z)) * Math.min(1, dt * 4); }
+    A.d.root.pos = [A.x, 0, A.z]; A.d.root.rot = [0, A.yaw, 0]; A.d.update(G.speed ? dt : 0); S.pos = [+A.x.toFixed(2), +A.z.toFixed(2)];
+  });
 };
 W3.shibaPick = function (sx, sy) {
-  const S = G.shiba; if (!S) return null;
-  const p = S.st === 'egg' ? (egg && [egg.pos[0], 0.35, egg.pos[2]]) : (A && [A.x, 0.45, A.z]); if (!p) return null;
-  const s = G3.project(p); return s && Math.hypot(s[0] - sx, s[1] - sy) < 52 ? { type: S.st === 'egg' ? 'egg' : 'shiba', id: 0 } : null;
+  let best = null, bd = 52;
+  KEYS.forEach((k, i) => {
+    const S = G[k], sl = SLOT[k]; if (!S) return;
+    const p = S.st === 'egg' ? (sl.egg && [sl.egg.pos[0], 0.35, sl.egg.pos[2]]) : (sl.A && [sl.A.x, 0.45, sl.A.z]); if (!p) return;
+    const q = G3.project(p); if (!q) return; const d = Math.hypot(q[0] - sx, q[1] - sy);
+    if (d < bd) { bd = d; best = { type: S.st === 'egg' ? 'egg' : 'shiba', id: i }; }
+  });
+  return best;
 };
-W3.shibaPos = () => G.shiba && G.shiba.st === 'egg' ? (egg ? [egg.pos[0], 0.2, egg.pos[2]] : null) : A ? [A.x, 0.25, A.z] : null;
-W3.shibaPlay = clip => { if (A && (A.mode === 'yard' || A.mode === 'visit')) { A.path = []; playOnce(A, clip); } };
-W3.shibaReset = () => { if (A) { W3.dyn.kids = W3.dyn.kids.filter(k => k !== A.d.root); A = null; } if (egg) { W3.dyn.kids = W3.dyn.kids.filter(k => k !== egg); egg = null; } };
+W3.shibaPos = id => { const k = KEYS[id || 0], S = G[k], sl = SLOT[k]; if (!S) return null; return S.st === 'egg' ? (sl.egg ? [sl.egg.pos[0], 0.2, sl.egg.pos[2]] : null) : sl.A ? [sl.A.x, 0.25, sl.A.z] : null; };
+W3.shibaPlay = (clip, id) => { const A = SLOT[KEYS[id || 0]].A; if (A && (A.mode === 'yard' || A.mode === 'visit')) { A.path = []; playOnce(A, clip); } };
+W3.shibaReset = () => { for (const k of KEYS) { const sl = SLOT[k]; if (sl.A) { rm(sl.A.d.root); sl.A = null; } if (sl.egg) { rm(sl.egg); sl.egg = null; } } };
 })();
 
 </script>
@@ -3779,13 +3877,14 @@ function toast(m) { const t = $('toast'); t.textContent = m; t.style.opacity = 1
 function feed(m, kind) { const el = document.createElement('div'); el.className = 'fd ' + (kind || ''); el.textContent = m; $('feed').prepend(el); while ($('feed').children.length > 3) $('feed').lastChild.remove(); setTimeout(() => { el.style.opacity = 0; setTimeout(() => el.remove(), 700); }, kind === 'big' ? 6500 : 4500); }
 const AC = window.AudioContext || window.webkitAudioContext; let ac;
 function beep(f, d, ty, v) { try { ac = ac || new AC(); const o = ac.createOscillator(), g = ac.createGain(); o.type = ty || 'sine'; o.frequency.value = f; g.gain.setValueAtTime(v || 0.05, ac.currentTime); g.gain.exponentialRampToValueAtTime(0.0001, ac.currentTime + d); o.connect(g); g.connect(ac.destination); o.start(); o.stop(ac.currentTime + d); } catch (e) { /* 無音效 */ } }
-const SFX = { ok: () => { beep(660, 0.1); setTimeout(() => beep(990, 0.16), 90); }, no: () => beep(200, 0.3, 'triangle'), coin: () => { beep(1200, 0.06, 'square', 0.025); setTimeout(() => beep(1600, 0.08, 'square', 0.025), 60); }, wolf: () => { beep(300, 0.6, 'sawtooth', 0.03); setTimeout(() => beep(440, 0.8, 'sawtooth', 0.025), 350); }, up: () => [523, 659, 784, 1046].forEach((f, i) => setTimeout(() => beep(f, 0.22), i * 110)), pop: () => beep(880, 0.07, 'sine', 0.04), love: () => [880, 1175].forEach((f, i) => setTimeout(() => beep(f, 0.12, 'sine', 0.04), i * 90)) };
+const SFX = { ok: () => { beep(660, 0.1); setTimeout(() => beep(990, 0.16), 90); }, no: () => beep(200, 0.3, 'triangle'), coin: () => { beep(1200, 0.06, 'square', 0.025); setTimeout(() => beep(1600, 0.08, 'square', 0.025), 60); }, wolf: () => { beep(300, 0.6, 'sawtooth', 0.03); setTimeout(() => beep(440, 0.8, 'sawtooth', 0.025), 350); }, up: () => [523, 659, 784, 1046].forEach((f, i) => setTimeout(() => beep(f, 0.22), i * 110)), pop: () => beep(880, 0.07, 'sine', 0.04), love: () => [880, 1175].forEach((f, i) => setTimeout(() => beep(f, 0.12, 'sine', 0.04), i * 90)), hit: () => { beep(150, 0.14, 'square', 0.035); beep(70, 0.22, 'sawtooth', 0.03); }, slash: () => { beep(2200, 0.05, 'sawtooth', 0.015); setTimeout(() => beep(1400, 0.07, 'sawtooth', 0.012), 30); }, howl: () => { [330, 392, 440, 392].forEach((f, i) => setTimeout(() => beep(f, 0.45, 'triangle', 0.03), i * 260)); }, win: () => [523, 659, 784, 1046, 1318].forEach((f, i) => setTimeout(() => beep(f, 0.18, 'square', 0.02), i * 90)) };
+window.__SFX = SFX;
 const meter = (p, col) => `<div class="meter"><i style="width:${U.clamp(p * 100, 0, 100)}%;${col ? 'background:' + col : ''}"></i></div>`;
 const hearts = a => { const l = F.affLv(a); let s = ''; for (let i = 0; i < 5; i++) s += i <= l - 1 || (i === 0 && a >= 10) ? '💗' : '🤍'; return s; };
 function layout() { const top = $('top'); if (!top.hidden) $('feed').style.top = top.getBoundingClientRect().bottom + 6 + 'px'; }
 function viewH() { const b = $('bottom'); return b.hidden ? H : Math.max(200, Math.round(b.getBoundingClientRect().top + 16)); }
 function modal(html) { $('mbox').innerHTML = html; $('modal').hidden = false; }
-$('modal').onclick = e => { if (e.target === $('modal') || e.target.dataset.close) $('modal').hidden = true; };
+$('modal').onclick = e => { if (UI.lockM) return; if (e.target === $('modal') || e.target.dataset.close) $('modal').hidden = true; };
 
 /* ---------- 標題 ---------- */
 function titleScreen() {
@@ -3849,7 +3948,7 @@ function loop(now) {
   const dt = Math.min(0.06, (now - last) / 1000); last = now; UI.t += dt;
   if (G.rabbits && $('title').hidden) {
     if (!F.hold) { acc += dt * F.MIN_PER_SEC * (G.speed || 0); const n = Math.floor(acc); acc -= n; if (n) F.tick(Math.min(n, 120)); }
-    events(); shibaNotice();
+    events(); shibaNotice(); if (F.raidAsk) F.raidAsk();
     hudT -= dt; if (hudT <= 0) { hudT = 0.3; hud(); }
     saveT += dt; if (saveT > 20) { saveT = 0; F.save(); }
     const vh = viewH();
@@ -3880,7 +3979,7 @@ const WX = { 晴: '☀️ 晴', 陰: '☁️ 陰', 雨: '🌧️ 雨', 寒流: '
 function hud() {
   if (!G.rabbits) return;
   $('money').textContent = U.fmt(G.money);
-  { const S = G.shiba, el = $('cEgg'); el.hidden = !(S && S.st === 'egg'); if (S && S.st === 'egg') $('egg').textContent = `${S.q}/${F.EGG_Q}`; }
+  { const E = F.SHIBA_K.map(k => G[k]).filter(S => S && S.st === 'egg'), el = $('cEgg'); el.hidden = !E.length; if (E.length) $('egg').textContent = E.map(S => `${S.q}/${F.EGG_Q}`).join('・'); }
   $('tk').textContent = G.careTk; $('tkp').textContent = `${G.careQ || 0}/${F.CARE_Q}`; $('cTk').classList.toggle('warn', G.careTk < 1);
   $('clock').textContent = `${U.hm(G.min)} ${F.isNight() ? (F.fullMoon() ? '🌕' : '🌙') : ''}`;
   $('date').textContent = F.dateStr();
@@ -3898,7 +3997,7 @@ function hud() {
 }
 
 /* ---------- 底部面板 ---------- */
-$('tabs').onclick = e => { const b = e.target.closest('button'); if (!b) return; if (UI.quiz && !confirmLeave()) return; UI.quiz = null; UI.tab = b.dataset.t; UI.min = false; render(); };
+$('tabs').onclick = e => { const b = e.target.closest('button'); if (!b) return; if (UI.quiz && !confirmLeave()) return; const same = !UI.quiz && UI.tab === b.dataset.t; UI.quiz = null; UI.tab = b.dataset.t; UI.min = same ? !UI.min : false; render(); };   /* 再點一次目前的分頁＝收起／展開 */
 $('grip').onclick = () => { UI.min = !UI.min; render(); };
 function confirmLeave() { if (UI.quiz.mode === 'exam' && !UI.quiz.done) { if (UI.leaveArm && Date.now() - UI.leaveArm < 3000) return true; UI.leaveArm = Date.now(); toast('模擬考進行中，再按一次放棄考試'); return false; } return true; }
 function render() {
@@ -3974,7 +4073,7 @@ const PANEL = {
     for (const it of F.SHOP.filter(x => x.cat === UI.shopCat)) {
       const p = F.price(it), can = !it.can || it.can(), lock = it.lv && G.level < it.lv;
       const name = it.id === 'fence' ? (G.fence < 3 ? `升級為「${F.FENCE[G.fence + 1].n}」` : '圍籬已是最高級') : it.n;
-      h += `<div class="card ${lock ? 'lock' : ''}"><div class="row"><b>${it.ic} ${esc(name)}</b><button class="btn s gold" data-buy="${it.id}" ${!can || lock || G.money < p ? 'disabled' : ''}>${lock ? `🔒 Lv${it.lv}` : can ? '$' + U.fmt(p) : '—'}</button></div><div class="desc">${esc(it.d)}${it.id === 'fence' ? `（目前：${F.FENCE[G.fence].n}）` : ''}${it.id === 'hutch' ? `（目前 ${G.hutch} 座、容量 ${F.cap()}）` : ''}</div></div>`;
+      h += `<div class="card ${lock ? 'lock' : ''}"><div class="row"><b>${it.ic} ${esc(name)}${it.stk ? ` <span class="tag g">現有 ${it.stk()}</span>` : ''}</b><button class="btn s gold" data-buy="${it.id}" ${!can || lock || G.money < p ? 'disabled' : ''}>${lock ? `🔒 Lv${it.lv}` : can ? '$' + U.fmt(p) : '—'}</button></div><div class="desc">${esc(it.d)}${it.id === 'fence' ? `（目前：${F.FENCE[G.fence].n}）` : ''}${it.id === 'hutch' ? `（目前 ${G.hutch} 座、容量 ${F.cap()}）` : ''}</div></div>`;
     }
     return h;
   },
@@ -4030,7 +4129,12 @@ function shibaNotice() {
   if (!S.seen) { S.seen = 1; SFX.up(); modal(`<h2>🎁 神秘禮物</h2><p style="text-align:center;font-size:54px;margin:6px 0">🥚</p><p>今天登入收到一份<b>神秘禮物</b>：一顆暖呼呼的<b>神秘蛋</b>！已經放在庭院裡了。</p><p>📝 每<b>答對 1 題</b>，蛋就會更接近孵化，<b>答對 ${F.EGG_Q} 題</b>就能孵出來。裡面到底是什麼呢……？</p><div class="acts"><button class="btn" data-close="1">好期待！</button></div>`); F.save(); return; }
   if (S.st === 'pup' && !S.hatchSeen) { S.hatchSeen = 1; SFX.up(); setTimeout(() => SFX.love(), 300); modal(`<h2>🐣 神秘蛋孵化了！</h2><p style="text-align:center;font-size:54px;margin:6px 0">🐕</p><p>蛋殼「啪」地裂開，滾出來一隻<b>圓滾滾的胖紅柴</b>，一臉委屈地看著你。</p><p>牠叫做「<b>${esc(S.nm)}</b>」，以後就住在農場的庭院裡了。點一下牠可以摸摸、握手（各用 1 張 🎟️）。</p><div class="acts"><button class="btn" id="mName">✏️ 取名字</button><button class="btn alt" data-close="1">歡迎回家！</button></div>`);
     $('mName').onclick = () => { const nm = prompt('幫柴犬取個名字（最多 8 字）', S.nm); if (nm && nm.trim()) S.nm = nm.trim().slice(0, 8); $('modal').hidden = true; F.save(); toast(`「${S.nm}」搖了搖尾巴！`); };
-    F.log('🐣 神秘蛋孵出了一隻胖紅柴！', 'big'); F.save(); }
+    F.log('🐣 神秘蛋孵出了一隻胖紅柴！', 'big'); F.save(); return; }
+  const S2 = F.giveEgg2(); if (!S2) return;
+  if (!S2.seen) { S2.seen = 1; SFX.up(); modal(`<h2>✨ 限定復刻 ✨</h2><p style="text-align:center;font-size:54px;margin:6px 0">🥚</p><p>好評復刻！那份<b>神秘禮物</b>又送來了一顆——這次的蛋殼是<b>深色斑點</b>，還繞著淡淡的紫光。</p><p>已經放在庭院的<b>大門前</b>了。一樣<b>答對 ${F.EGG_Q} 題</b>就會孵化${S.st === 'egg' ? '（兩顆蛋會一起累積進度）' : ''}。這次會孵出什麼呢……？</p><div class="acts"><button class="btn" data-close="1">收下！</button></div>`); F.save(); return; }
+  if (S2.st === 'pup' && !S2.hatchSeen) { S2.hatchSeen = 1; SFX.up(); setTimeout(() => SFX.love(), 300); modal(`<h2>🐣 復刻蛋孵化了！</h2><p style="text-align:center;font-size:54px;margin:6px 0">🐕‍⬛</p><p>蛋殼裂開，滾出來一隻<b>圓滾滾的胖黑柴</b>，焦糖色的小眉毛一動一動的。</p><p>牠叫做「<b>${esc(S2.nm)}</b>」，會和${esc(S.nm)}一起住在庭院裡。點一下牠可以摸摸、握手（各用 1 張 🎟️）。</p><div class="acts"><button class="btn" id="mName">✏️ 取名字</button><button class="btn alt" data-close="1">歡迎回家！</button></div>`);
+    $('mName').onclick = () => { const nm = prompt('幫黑柴取個名字（最多 8 字）', S2.nm); if (nm && nm.trim()) S2.nm = nm.trim().slice(0, 8); $('modal').hidden = true; F.save(); toast(`「${S2.nm}」搖了搖尾巴！`); };
+    F.log('🐣 復刻蛋孵出了一隻胖黑柴！', 'big'); F.save(); }
 }
 function tkLine() { return `<div class="tkl">🎟️ 互動券 <b>${G.careTk}</b> 張・每次互動用 1 張・再答對 <b>${F.careLeft()}</b> 題得 1 張${G.careTk < 1 ? ' <button class="btn s blue" data-gowork="1">📝 去答題</button>' : ''}</div>`; }
 function renderCard() {
@@ -4052,13 +4156,16 @@ function renderCard() {
     <div class="row"><span>體力</span><b>${Math.round(d.hp)}/100</b></div>${meter(d.hp / 100, d.hp < 40 ? '#c8402a' : '')}
     <div class="acts"><button class="btn s ${G.careTk < 1 ? 'alt' : ''}" data-dact="pet" ${d.care.pet ? 'disabled' : ''}>🤚 摸摸 🎟️</button><button class="btn s blue" data-dact="train" ${d.care.train ? 'disabled' : ''}>🏋️ 訓練 $300（攻擊+1）</button><button class="btn s alt" data-buy="vet" ${G.dogs.some(x => x.hp < 100) ? '' : 'disabled'}>🩺 治療所有狗 $300</button></div>`;
   } else if (c.type === 'egg') {
-    const S = G.shiba, left = Math.max(0, F.EGG_Q - S.q);
-    h = `<div class="row"><b>🥚 神秘蛋</b><button class="x" data-cclose="1">✕</button></div><div class="desc">一份來路不明的神秘禮物，蛋殼暖暖的，偶爾會輕輕晃動……好像有什麼在裡面。</div>
+    const S = G[F.SHIBA_K[c.id || 0]]; if (!S) return closeCard(); const left = Math.max(0, F.EGG_Q - S.q);
+    h = S.re ? `<div class="row"><b>🥚 復刻神秘蛋</b><button class="x" data-cclose="1">✕</button></div><div><span class="tag y">✨ 限定復刻</span></div><div class="desc">蛋殼上是深色斑點，還繞著一圈淡淡的紫光。和上次那顆好像有點不一樣……</div>`
+      : `<div class="row"><b>🥚 神秘蛋</b><button class="x" data-cclose="1">✕</button></div><div class="desc">一份來路不明的神秘禮物，蛋殼暖暖的，偶爾會輕輕晃動……好像有什麼在裡面。</div>`;
+    h += `
     <div class="row"><span>孵化進度</span><b>${S.q}/${F.EGG_Q}</b></div>${meter(S.q / F.EGG_Q, '#e8a04a')}<div class="tkl">📝 每答對 1 題行政法，蛋就更接近孵化；再答對 <b>${left}</b> 題就會孵化！<button class="btn s blue" data-gowork="1">去答題</button></div>`;
   } else if (c.type === 'shiba') {
-    const S = G.shiba;
-    h = `<div class="row"><b class="cname">🐕 ${esc(S.nm)}</b><button class="x" data-cclose="1">✕</button></div><div><span class="tag">🍑 胖紅柴</span><span class="tag y">神秘蛋孵出的柴犬</span></div>
-    <div class="desc">圓滾滾的紅柴，表情總是有點委屈。不愛走路，喜歡坐著用前腳拍拍地、歪頭看你，偶爾還會一臉嫌棄地斜眼。</div>
+    const S = G[F.SHIBA_K[c.id || 0]]; if (!S) return closeCard();
+    h = `<div class="row"><b class="cname">🐕 ${esc(S.nm)}</b><button class="x" data-cclose="1">✕</button></div>` + (S.re ? `<div><span class="tag">🖤 胖黑柴</span><span class="tag y">復刻蛋孵出的柴犬</span></div>
+    <div class="desc">黑色的毛、白色的嘴邊，眉毛是兩撮焦糖色的「麻呂眉」。跟紅柴一樣圓滾滾、一樣愛歪頭，看起來更酷，其實更愛撒嬌。</div>` : `<div><span class="tag">🍑 胖紅柴</span><span class="tag y">神秘蛋孵出的柴犬</span></div>
+    <div class="desc">圓滾滾的紅柴，表情總是有點委屈。不愛走路，喜歡坐著用前腳拍拍地、歪頭看你，偶爾還會一臉嫌棄地斜眼。</div>`) + `
     <div class="row" style="margin-top:4px"><span>好感 ${hearts(S.aff)} <small>${F.AFF_LV[F.affLv(S.aff)]} ${Math.round(S.aff)}</small></span></div>
     <div class="acts"><button class="btn s ${S.care.pet || G.careTk < 1 ? 'alt' : ''}" data-sact="pet" ${S.care.pet ? 'disabled' : ''}>🤚 摸摸 🎟️</button><button class="btn s ${S.care.shake || G.careTk < 1 ? 'alt' : ''}" data-sact="shake" ${S.care.shake ? 'disabled' : ''}>🐾 握手 🎟️</button></div>${tkLine()}`;
   } else if (c.type === 'decor') {
@@ -4077,7 +4184,7 @@ $('card').onclick = e => {
   if (d.gowork) { closeCard(); UI.quiz = null; UI.tab = 'work'; UI.min = false; render(); return; }
   if (d.act) { const r = G.rabbits.find(q => q.id === c.id); const res = F.interact(r, d.act); if (!res.ok) { toast(res.msg || '不行喔'); if (res.study) SFX.no(); renderCard(); return; } W3.react(r.id, res.react); res.react === 'run' ? SFX.no() : SFX.love(); toast(res.msg); renderCard(); hud(); return; }
   if (d.sellr) { const r = G.rabbits.find(q => q.id === c.id); if (UI.sellArm !== r.id) { UI.sellArm = r.id; toast(`確定讓「${r.nm}」去新家嗎？再按一次確認`); return; } UI.sellArm = 0; const p = F.sellOne(r.id); if (p > 0) { SFX.coin(); toast(`「${r.nm}」去了新家 +$${p}`); } closeCard(); hud(); return; }
-  if (d.sact) { const res = F.shibaInteract(d.sact); toast(res.msg || '不行喔'); if (res.ok) { SFX.love(); W3.shibaPlay(d.sact === 'pet' ? 'happy' : 'shake'); } else if (res.study) SFX.no(); renderCard(); hud(); return; }
+  if (d.sact) { const sid = (UI.card && UI.card.id) || 0, res = F.shibaInteract(d.sact, F.SHIBA_K[sid]); toast(res.msg || '不行喔'); if (res.ok) { SFX.love(); W3.shibaPlay(d.sact === 'pet' ? 'happy' : 'shake', sid); } else if (res.study) SFX.no(); renderCard(); hud(); return; }
   if (d.dact) { const g = G.dogs.find(q => q.id === c.id); const res = F.dogInteract(g, d.dact); toast(res.msg); if (res.ok) SFX.pop(); renderCard(); hud(); return; }
   if (d.buy) { const r = F.buy(d.buy); toast(r === 'ok' ? '治療完成！' : '錢不夠'); renderCard(); return; }
   if (d.undecor) { F.removeDecor(+d.undecor); closeCard(); hud(); return; }
@@ -4236,6 +4343,159 @@ document.addEventListener('visibilitychange', () => { if (document.hidden && G.r
 addEventListener('pagehide', () => { if (G.rabbits) F.save(); });
 
 titleScreen(); requestAnimationFrame(loop);
+/* ==========================================================================
+   v5 介面與道具更新：
+   ・底部面板：大一點的「收起／展開」把手、可上下滑動收合、再點一次目前的分頁也會收起
+   ・頂部狀態列加上 💊 藥品；每個狀態都能點，直接跳到相關頁面
+   ・農場頁最上方「⚠️ 待處理」：生病沒藥、飼料快吃完、兔舍髒、門壞、狗受傷，一鍵處理
+   ・看門狗獨立一區放在農場頁上方：等級、經驗、體力、訓練／摸摸／治療／再養一隻都在同一處
+   ・🎒 道具欄：所有消耗品與設施一目了然
+   ・新道具：維他命、益生菌、消毒噴霧、高級狗糧、潔牙骨；夜燈、自動餵食器、豪華狗屋、訓練哨子
+   ・畫面：🎥 視角切換（全景／兔舍／庭院）、雙擊畫面回到全景、色彩與暗角微調
+   ========================================================================== */
+(function () {
+  const ensure = () => { if (!G.inv) G.inv = { vit: 0, probio: 0, disinf: 0, dogfood: 0, bone: 0 }; if (!G.fac) G.fac = { lamp: 0, feeder: 0, kennel: 0, whistle: 0 }; };
+  const inv = k => (G.inv ? G.inv[k] : 0) || 0, has = k => !!(G.fac && G.fac[k]);
+  const NEW_SUP = [
+    { id: 'vit', cat: 'supply', n: '兔用維他命 5 份', ic: '🧴', price: 350, d: '兔子平均心情低於 70 時，每天早上自動餵 1 份，所有兔子心情 +10。', stk: () => inv('vit') + ' 份', f: () => { ensure(); G.inv.vit += 5; } },
+    { id: 'probio', cat: 'supply', n: '益生菌 7 天份', ic: '🦠', price: 500, d: '每天早上自動使用：剛生病的兔子有六成機會隔天自己好，不必用藥品。', stk: () => inv('probio') + ' 天', f: () => { ensure(); G.inv.probio += 7; } },
+    { id: 'disinf', cat: 'supply', n: '消毒噴霧 3 瓶', ic: '🧯', price: 300, d: '兔舍衛生低於 55% 時，每天早上自動噴一瓶，衛生 +35%。', stk: () => inv('disinf') + ' 瓶', f: () => { ensure(); G.inv.disinf += 3; } },
+    { id: 'dogfood', cat: 'supply', n: '高級狗糧 7 天份', ic: '🍖', price: 420, d: '每天早上自動餵：所有狗體力 +15、不會挨餓。', stk: () => inv('dogfood') + ' 天', f: () => { ensure(); G.inv.dogfood += 7; } },
+    { id: 'bone', cat: 'supply', n: '潔牙骨 3 根', ic: '🦴', price: 240, d: '狗體力低於 50 時，每天早上自動給一根，體力 +35。', stk: () => inv('bone') + ' 根', f: () => { ensure(); G.inv.bone += 3; } }];
+  const NEW_FAC = [
+    { id: 'lamp', cat: 'facility', n: '庭院夜燈', ic: '🏮', price: 2200, lv: 3, d: '夜裡照亮庭院，野狼來襲機率 −20%。', can: () => !has('lamp'), f: () => { ensure(); G.fac.lamp = 1; } },
+    { id: 'feeder', cat: 'facility', n: '自動餵食器', ic: '🥣', price: 3000, lv: 4, d: '定時定量，牧草和飼料用量 −12%。', can: () => !has('feeder'), f: () => { ensure(); G.fac.feeder = 1; } },
+    { id: 'kennel', cat: 'facility', n: '豪華狗屋', ic: '🛖', price: 1800, lv: 3, d: '狗狗睡得好，每天早上體力 +12。', can: () => !has('kennel'), f: () => { ensure(); G.fac.kennel = 1; } },
+    { id: 'whistle', cat: 'facility', n: '訓練哨子', ic: '📯', price: 900, lv: 2, d: '訓練狗時攻擊力多 +1（每次訓練 +2）。', can: () => !has('whistle'), f: () => { ensure(); G.fac.whistle = 1; } }];
+  const mi = F.SHOP.findIndex(x => x.id === 'med'); F.SHOP.splice(mi + 1, 0, ...NEW_SUP); F.SHOP.push(...NEW_FAC);
+  /* 每天早上自動使用的道具 */
+  const _nd = F.newDay; F.newDay = function () {
+    const r = _nd.apply(this, arguments); ensure(); const R = G.rabbits, D = G.dogs;
+    if (R.length && G.inv.vit > 0) { const avg = R.reduce((a, q) => a + q.mood, 0) / R.length; if (avg < 70) { G.inv.vit--; R.forEach(q => (q.mood = Math.min(100, q.mood + 10))); F.log('早上餵了兔用維他命，大家精神都好多了。', 'good'); } }
+    if (G.inv.probio > 0 && R.length) { G.inv.probio--; let n = 0; R.forEach(q => { if (q.sick === 1 && Math.random() < 0.6) { q.sick = 0; n++; } }); if (n) F.log(`益生菌發揮作用，${n} 隻兔子自己好起來了。`, 'good'); }
+    if (G.inv.disinf > 0 && G.clean < 55) { G.inv.disinf--; G.clean = Math.min(100, G.clean + 35); F.log('噴了消毒噴霧，兔舍乾淨多了。', 'good'); }
+    if (G.inv.dogfood > 0 && D.length) { G.inv.dogfood--; D.forEach(d => { d.hp = Math.min(100, d.hp + 15); d.hungry = 0; }); }
+    D.forEach(d => { if (G.inv.bone > 0 && d.hp < 50) { G.inv.bone--; d.hp = Math.min(100, d.hp + 35); F.log(`「${d.nm}」啃了潔牙骨，體力恢復了。`, 'good'); } if (has('kennel')) d.hp = Math.min(100, d.hp + 12); });
+    return r; };
+  const _need = F.dailyNeed; F.dailyNeed = function () { const n = _need.apply(this, arguments); if (has('feeder')) { n.hay *= 0.88; n.pel *= 0.88; } return n; };
+  const _di = F.dogInteract; F.dogInteract = function (d, act) { const r = _di.apply(this, arguments); if (act === 'train' && r.ok && has('whistle')) { d.atk += 1; r.msg = (r.msg || '') + '（訓練哨子：攻擊再 +1）'; } return r; };
+  /* ---------- 農場頁：待處理、看門狗、道具欄 ---------- */
+  const btn = (attrs, txt, cls) => `<button class="btn s ${cls || ''}" ${attrs}>${txt}</button>`;
+  function alertsHTML() {
+    const L = [], sick = G.rabbits.filter(r => r.sick).length, nd = F.dailyNeed(), hd = nd.hay > 0 ? G.hay / nd.hay : 99, pd = nd.pel > 0 ? G.pel / nd.pel : 99, broken = G.doors.filter(d => !d).length, hurt = G.dogs.filter(d => d.hp < 40).length, hungry = G.dogs.filter(d => d.hungry).length;
+    if (sick && G.med < 1) L.push(['🤒', `<b>${sick} 隻兔子生病，藥品用完了</b>`, btn('data-buy="med"', '💊 買藥 $400', 'red')]);
+    else if (G.med < 1) L.push(['💊', '藥品 0 份，兔子生病時會沒藥可用', btn('data-buy="med"', '買藥 $400')]);
+    if (hd < 1.5) L.push(['🌾', `牧草只夠 ${hd.toFixed(1)} 天`, btn('data-buy="hay20"', '買 20kg $440')]);
+    if (pd < 1.5) L.push(['🥕', `兔飼料只夠 ${pd.toFixed(1)} 天`, btn('data-buy="pel20"', '買 20kg $720')]);
+    if (G.clean < 40) L.push(['🧹', `兔舍衛生只剩 ${Math.round(G.clean)}%，容易生病`, btn('data-clean="1"', `打掃 $${F.cleanCost()}`)]);
+    if (broken) L.push(['🚪', `${broken} 扇兔籠門壞了`, btn('data-repair="1"', '修理 $250')]);
+    if (hurt) L.push(['🩹', `${hurt} 隻狗受傷，戰力下降`, btn('data-buy="vet"', '🩺 治療 $300')]);
+    if (hungry) L.push(['🍖', `${hungry} 隻狗在挨餓（每隻每天狗糧 $50）`, btn('data-buy="dogfood"', '高級狗糧 $420')]);
+    if (!L.length) return '';
+    return `<div class="card alertc"><b>⚠️ 待處理（${L.length}）</b>${L.map(x => `<div class="arow"><span>${x[0]}</span><span class="atx">${x[1]}</span>${x[2]}</div>`).join('')}</div>`;
+  }
+  function dogHTML() {
+    const n = G.dogs.length;
+    let h = `<div class="card" id="dogSec"><div class="row"><b>🐶 看門狗 ${n}/6</b><span class="desc">${F.FENCE[G.fence].n}${G.net ? '・防鳥網' : ''}${has('lamp') ? '・夜燈' : ''}</span></div>`;
+    if (!n) h += '<div class="desc">還沒有看門狗！野狼來時會直接衝進兔舍抓壞門。</div>';
+    for (const d of G.dogs) {
+      const need = d.lv * 3, tr = !!(d.care && d.care.train), pet = !!(d.care && d.care.pet);
+      h += `<div class="dogr"><div class="row"><b class="tap" data-dog="${d.id}">🐕 ${esc(d.nm)} <span class="tag y">Lv${d.lv}</span></b><span class="desc">攻擊 ${d.atk}・勝 ${d.wins}${d.hungry ? '・<b style="color:var(--red)">挨餓</b>' : ''}</span></div>
+        <div class="dkv"><span>體力</span>${meter(d.hp / 100, d.hp < 40 ? '#c8402a' : '')}<b>${Math.round(d.hp)}</b></div>
+        <div class="dkv"><span>經驗</span>${meter(Math.min(1, d.xp / need), '#e2a83a')}<b>${d.xp}/${need}</b></div>
+        <div class="acts">${btn(`data-dtr="${d.id}" ${tr || d.hp < 40 ? 'disabled' : ''}`, tr ? '✔ 今天練過了' : `🏋️ 訓練 $300（攻擊 +${has('whistle') ? 2 : 1}）`, 'blue')}${btn(`data-dpet="${d.id}" ${pet ? 'disabled' : ''}`, '🤚 摸摸 🎟️', G.careTk < 1 ? 'alt' : '')}</div></div>`;
+    }
+    h += `<div class="acts">${G.dogs.some(d => d.hp < 100) ? btn('data-buy="vet"', '🩺 治療所有狗 $300', 'alt') : ''}${n < 6 ? btn('data-buy="dog"', '🐶 再養一隻 $1,500', 'gold') : ''}${G.fence < 3 ? btn('data-go="shop" data-cat="facility"', '🚧 圍籬・設施', 'alt') : ''}</div>
+      <div class="desc">⬆️ 升級方式：打退野狼得經驗，經驗滿了就升一級；每天可以訓練一次，攻擊力永久提升。${F.fullMoon() ? '<br>🌕 今晚滿月，S 級狼人可能出沒！' : ''}</div></div>`;
+    return h;
+  }
+  function invHTML() {
+    ensure(); const it = [['💊', '藥品', G.med + ' 份'], ['🧴', '維他命', inv('vit') + ' 份'], ['🦠', '益生菌', inv('probio') + ' 天'], ['🧯', '消毒噴霧', inv('disinf') + ' 瓶'], ['🍖', '高級狗糧', inv('dogfood') + ' 天'], ['🦴', '潔牙骨', inv('bone') + ' 根']];
+    const fac = NEW_FAC.filter(f => has(f.id)).map(f => `<span class="tag g">${f.ic} ${f.n}</span>`).join(' ');
+    return `<div class="card"><div class="row"><b>🎒 道具欄</b>${btn('data-go="shop" data-cat="supply"', '🛒 補貨', 'alt')}</div><div class="invg">${it.map(x => `<div class="inv"><i>${x[0]}</i><span>${x[1]}</span><b>${x[2]}</b></div>`).join('')}</div>${fac ? `<div class="desc" style="margin-top:6px">已有設施：${fac}</div>` : ''}<div class="desc">消耗品會在每天早上自動使用。</div></div>`;
+  }
+  const _farm = PANEL.farm; PANEL.farm = function () {
+    ensure(); let h = _farm.apply(this, arguments);
+    const a = h.indexOf('<div class="card"><div class="row"><b>🛡️ 庭院守衛'), b = h.indexOf('<div class="card"><b>📜 農場日誌');
+    if (a >= 0 && b > a) h = h.slice(0, a) + h.slice(b);
+    const t = h.indexOf('</h3>') + 5; h = h.slice(0, t) + alertsHTML() + dogHTML() + h.slice(t);
+    const lg = h.indexOf('<div class="card"><b>📜 農場日誌'); if (lg >= 0) h = h.slice(0, lg) + invHTML() + h.slice(lg);
+    return h; };
+  $('sheet').addEventListener('click', e => {
+    const b = e.target.closest('[data-dtr],[data-dpet]'); if (!b) return; e.stopPropagation();
+    const id = +(b.dataset.dtr || b.dataset.dpet), d = G.dogs.find(q => q.id === id); if (!d) return;
+    const r = F.dogInteract(d, b.dataset.dtr ? 'train' : 'pet'); toast(r.msg); if (r.ok) SFX.pop(); render(); hud(); }, true);
+  /* ---------- 頂部狀態：藥品、點一下直達 ---------- */
+  const _hud = hud; hud = function () { _hud.apply(this, arguments); if (!G.rabbits) return; ensure(); const sick = G.rabbits.some(r => r.sick);
+    $('med').textContent = G.med; $('cMed').classList.toggle('warn', G.med < 1 && sick); $('cMed').classList.toggle('blink', G.med < 1 && sick);
+    const fd = $('fDot'); const al = (G.med < 1 && sick) || G.dogs.some(d => d.hp < 40); if (al && fd.hidden) { fd.hidden = false; fd.textContent = '!'; } };
+  const go = (tab, cat, sec) => { if (UI.quiz) return; UI.tab = tab; if (cat) UI.shopCat = cat; UI.min = false; render(); if (sec) setTimeout(() => { const el = document.getElementById(sec); if (el) el.scrollIntoView({ block: 'start', behavior: 'smooth' }); }, 30); };
+  [['cHay', 'shop', 'supply'], ['cPel', 'shop', 'supply'], ['cMed', 'shop', 'supply'], ['cDog', 'farm', null, 'dogSec'], ['cRab', 'bunny'], ['cMoney', 'shop'], ['cTk', 'work']].forEach(([id, t, c, s]) => { const el = $(id); if (el) { el.style.cursor = 'pointer'; el.addEventListener('click', () => go(t, c, s)); } });
+  /* ---------- 底部面板：把手文字、上下滑動收合 ---------- */
+  const _render = render; render = function () { _render.apply(this, arguments); const g = $('gripT'); if (g) g.textContent = UI.min ? '︽ 展開面板' : '︾ 收起面板'; };
+  (function () { const gp = $('grip'); let y0 = null; gp.addEventListener('pointerdown', e => { y0 = e.clientY; }); gp.addEventListener('pointerup', e => { if (y0 == null) return; const dy = e.clientY - y0; y0 = null; if (Math.abs(dy) > 30) { UI.min = dy > 0; render(); e.preventDefault(); gp.dataset.sw = Date.now(); } });
+    const oc = gp.onclick; gp.onclick = e => { if (gp.dataset.sw && Date.now() - gp.dataset.sw < 400) return; oc && oc(e); }; })();
+  /* ---------- 視角：全景／兔舍／庭院，雙擊回全景 ---------- */
+  const VIEWS = [['🏞️ 全景', null, 14, 0.74], ['🐰 兔舍', [0, 0.4, -2.2], 9, 0.62], ['🐶 庭院', [0.4, 0.4, 5.6], 8.5, 0.6], ['🌾 飼料槽', [-3.5, 0.4, -1.5], 7, 0.55]];
+  let vi = 0; const vb = document.createElement('div'); vb.className = 'chip'; vb.id = 'cView'; vb.innerHTML = '<button id="viewBtn" title="切換視角">🎥</button>'; const fs = $('cFs'); fs.parentNode.insertBefore(vb, fs);
+  const setV = i => { vi = i; const v = VIEWS[i]; W3.cam.home = v[1]; W3.cam.dist = v[2]; W3.cam.pitch = v[3]; if (!v[1]) W3.cam.yaw = 0; toast(v[0], 1200); };
+  $('viewBtn').onclick = e => { e.stopPropagation(); setV((vi + 1) % VIEWS.length); };
+  let lastT = 0; W3.ov && W3.ov.addEventListener('pointerup', () => { const t = performance.now(); if (t - lastT < 300 && !W3.sel) setV(0); lastT = t; });
+  /* ---------- 樣式 ---------- */
+  const st = document.createElement('style'); st.textContent = `
+#grip{flex-direction:column;align-items:center;gap:2px;padding:6px 0 3px;touch-action:none;user-select:none}#grip span{width:48px;height:5px}#grip em{font-style:normal;font-size:11px;color:var(--mute);letter-spacing:.05em}
+.alertc{border:2px solid #e8b04a;background:#fff8e6}.arow{display:flex;align-items:center;gap:8px;margin-top:6px}.arow>span:first-child{font-size:18px}.arow .atx{flex:1;font-size:13px}
+.dogr{border-top:1px dashed var(--line);padding-top:7px;margin-top:7px}.dkv{display:grid;grid-template-columns:2.6em 1fr 3.4em;align-items:center;gap:6px;font-size:12px;margin-top:3px}.dkv b{text-align:right}.dkv .meter{margin:0}
+.invg{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:6px}.inv{background:#f6f1e4;border-radius:10px;padding:6px 4px;text-align:center;font-size:11.5px;display:flex;flex-direction:column;gap:1px}.inv i{font-style:normal;font-size:20px}.inv b{font-size:13px}
+.chip.blink{animation:blk 1s infinite}@keyframes blk{50%{background:#ffd9d2}}#cView button{font-size:14px}
+#cv{filter:saturate(1.1) contrast(1.04)}#vig{position:fixed;inset:0;pointer-events:none;z-index:3;background:radial-gradient(ellipse at 50% 42%,transparent 60%,rgba(40,25,10,.22) 100%)}`;
+  document.head.appendChild(st); const vg = document.createElement('div'); vg.id = 'vig'; document.body.appendChild(vg);
+  window.__R = { hud: () => hud(), render: () => render() };
+  /* ===== 狼來襲：緊急防衛答題 ===== */
+  let RQ = null;
+  function rqPick() {
+    const pool = Q.ALL.filter(q => Q.unlocked(q.ch)), wrong = Q.wrongList().filter(q => Q.unlocked(q.ch)).sort(() => Math.random() - 0.5);
+    const L = wrong.slice(0, 3);
+    for (let t = 0; L.length < 3 && t < 40; t++) { const q = Q.pick(pool); if (!L.includes(q)) L.push(q); }
+    return L.map(q => ({ q, fromWrong: wrong.includes(q) }));
+  }
+  function rqShow() {
+    const z = RQ, it = z.list[z.i], P = it.p || (it.p = Q.present(it.q)), done = z.ans != null;
+    let h = `<h2>${G.wolfS ? '💀 狼人逼近！' : '🐺 狼群逼近！'}緊急防衛 ${z.i + 1}/3</h2><p style="margin:2px 0 8px;font-size:13px;color:#7a6a5a">每答對 1 題，看門狗隨機獲得一種防禦加持。${it.fromWrong ? '<span class="tag r">📕 錯題</span>' : ''}</p>`;
+    h += `<div class="qtext" style="font-weight:700;margin-bottom:8px">${esc(it.q.q)}</div>`;
+    P.opts.forEach((o, i) => { const cls = done ? (o.ok ? 'ok' : i === z.ans ? 'no' : '') : ''; h += `<button class="opt ${cls}" data-rq="${i}" ${done ? 'disabled' : ''}><span class="k">${'ABCD'[i]}</span><span>${esc(o.t)}</span></button>`; });
+    if (done) {
+      const b = z.last;
+      h += b ? `<div class="tkl" style="background:#e6f4ff;display:block">✅ 答對了！看門狗獲得 <b>${F.RBUFF[b].ic} ${F.RBUFF[b].n}</b>：${F.RBUFF[b].d}</div>` : `<div class="tkl" style="background:#fbe9e4;display:block">❌ 答錯了，這題已加入錯題本。</div>`;
+      if (it.q.e) h += `<p style="font-size:13px;color:#6a5a4a">${esc(it.q.e)}</p>`;
+      h += `<div class="acts"><button class="btn ${z.i < 2 ? 'blue' : 'red'}" data-rqn="1">${z.i < 2 ? '下一題 ➜' : '⚔️ 迎戰！'}</button></div>`;
+    }
+    if (z.buffs.length) h += `<p style="margin-top:6px;font-size:13px">目前加持：${z.buffs.map(b => F.RBUFF[b].ic + F.RBUFF[b].n).join('、')}</p>`;
+    modal(h); UI.lockM = true;
+    $('mbox').querySelectorAll('[data-rq]').forEach(el => el.onclick = () => rqAns(+el.dataset.rq));
+    const nb = $('mbox').querySelector('[data-rqn]'); if (nb) nb.onclick = rqNext;
+  }
+  function rqAns(i) {
+    const z = RQ; if (!z || z.ans != null) return; const it = z.list[z.i], ok = it.p.opts[i].ok; z.ans = i;
+    Q.answer(it.q, ok, 'raid'); z.last = null;
+    if (ok) { const left = Object.keys(F.RBUFF).filter(k => !z.buffs.includes(k)); z.last = U.pick(left); z.buffs.push(z.last); z.right++; SFX.ok(); }
+    else SFX.no();
+    rqShow(); hud(); F.save();
+  }
+  function rqNext() {
+    const z = RQ; if (z.i < 2) { z.i++; z.ans = null; rqShow(); return; }
+    UI.lockM = false; $('modal').hidden = true; RQ = null;
+    G.raidPending = 0; F.hold = false; toast(z.right ? `答對 ${z.right}/3 題，狗狗獲得 ${z.buffs.length} 種防禦加持！` : '一題都沒答對……狗狗只能硬撐了！');
+    F.raid(z.buffs);
+  }
+  F.raidAsk = function () {
+    if (!G.raidPending) return; F.hold = true;
+    if (RQ || W3.raidAnim || !$('modal').hidden || (UI.quiz && UI.quiz.mode === 'exam' && !UI.quiz.done)) return;
+    if (!Q.ALL.some(q => Q.unlocked(q.ch))) { G.raidPending = 0; F.hold = false; F.raid(); return; }
+    closeCard(); RQ = { list: rqPick(), i: 0, ans: null, buffs: [], right: 0 }; SFX.wolf(); rqShow();
+  };
+})();
+
 })();
 
 </script>
