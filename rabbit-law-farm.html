@@ -1458,10 +1458,10 @@ F.useDecor = function (r, t) { if (!r) return; const fav = F.PERS[r.pers].likes.
 F.QPOOL = [
   { k: 'right', n: '答對 {g} 題行政法', g: [8, 12, 16] }, { k: 'hard', n: '答對 {g} 題 ⭐⭐⭐ 高難題', g: [1, 2, 3] }, { k: 'pet', n: '摸摸兔子 {g} 次', g: [2, 3, 4] },
   { k: 'snack', n: '餵兔子零食 {g} 次', g: [2, 3, 4] }, { k: 'care', n: '幫兔子梳毛／陪玩／抱抱 {g} 次', g: [2, 3, 4] }, { k: 'clean', n: '打掃兔舍 {g} 次', g: [1, 1, 1] },
-  { k: 'gift', n: '收集兔子的禮物 {g} 個', g: [1, 2, 3] }, { k: 'review', n: '錯題複習答對 {g} 題', g: [3, 5, 8] }, { k: 'streak', n: '連續答對 {g} 題', g: [5, 8, 12] },
+  { k: 'review', n: '錯題複習答對 {g} 題', g: [3, 5, 8] }, { k: 'streak', n: '連續答對 {g} 題', g: [5, 8, 12] },
 ];
 F.newQuests = function () {
-  if (G.quests && G.quests.day === G.day) return;
+  if (G.quests && G.quests.day === G.day) { G.quests.list = G.quests.list.filter(q => q.k !== 'gift'); return; }
   const pool = F.QPOOL.slice().sort(() => Math.random() - 0.5);
   const tier = G.level < 4 ? 0 : G.level < 9 ? 1 : 2;
   const list = [pool.find(q => q.k === 'right')].concat(pool.filter(q => q.k !== 'right').slice(0, 2)).map(q => ({ k: q.k, n: q.n.replace('{g}', q.g[tier]), goal: q.g[tier], prog: 0, claimed: 0 }));
